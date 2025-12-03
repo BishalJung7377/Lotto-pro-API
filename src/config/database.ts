@@ -6,8 +6,8 @@ dotenv.config();
 export const pool = mysql.createPool({
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'Razan7412@',
-  database: process.env.DB_NAME || 'lottopro',
+  password: process.env.DB_PASSWORD || 'B1i2s3h4a5l6',
+  database: process.env.DB_NAME || 'lotto_pro', /// change the db name to lotto_pro
   port: parseInt(process.env.DB_PORT || '3306'),
   waitForConnections: true,
   connectionLimit: 10,

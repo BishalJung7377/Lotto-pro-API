@@ -23,6 +23,7 @@ export const authMiddleware = (
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    console.log(token);
     const decoded = verifyToken(token);
 
     req.user = decoded;

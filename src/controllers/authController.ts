@@ -19,9 +19,14 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Check if store owner already exists
-    const [existingUser] = await pool.query('SELECT * FROM STORE_OWNER WHERE email = ?', [email]);
+    const [existingUser] = await pool.query(
+      'SELECT * FROM STORE_OWNER WHERE email = ?',
+      [email]
+    );
     if ((existingUser as any[]).length > 0) {
-      res.status(400).json({ error: 'Store owner with this email already exists' });
+      res
+        .status(400)
+        .json({ error: 'Store owner with this email already exists' });
       return;
     }
 
@@ -56,6 +61,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
+/// LOGIN
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password }: LoginRequest = req.body;
@@ -67,7 +73,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Find store owner
-    const [result] = await pool.query('SELECT * FROM STORE_OWNER WHERE email = ?', [email]);
+    const [result] = await pool.query(
+      'SELECT * FROM STORE_OWNER WHERE email = ?',
+      [email]
+    );
     if ((result as any[]).length === 0) {
       res.status(401).json({ error: 'Invalid email or password' });
       return;
@@ -76,7 +85,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     const storeOwner: any = (result as any[])[0];
 
     // Verify password
-    const isValidPassword = await comparePassword(password, storeOwner.password);
+    const isValidPassword = await comparePassword(
+      password,
+      storeOwner.password
+    );
     if (!isValidPassword) {
       res.status(401).json({ error: 'Invalid email or password' });
       return;
@@ -116,7 +128,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-export const getProfile = async (req: Request, res: Response): Promise<void> => {
+export const getProfile = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   try {
     const userId = (req as any).user.id;
 
