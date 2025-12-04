@@ -1,0 +1,12 @@
+/// THIS IS FOR HOSTING THE SERVER ONLINE
+
+{
+    "version": 2,
+    "builds": [
+      { "src": "./src/server.ts", "use": "@vercel/node" }
+    ],
+    "routes": [
+      { "src": "/(.*)", "dest": "/" }
+    ]
+  }
+ 
