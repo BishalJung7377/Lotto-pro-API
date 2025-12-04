@@ -27,6 +27,35 @@
 
 // src/config/database.ts
 // src/config/database.ts
+// import mysql from 'mysql2/promise';
+// import dotenv from 'dotenv';
+
+// dotenv.config();
+
+// export let pool: mysql.Pool;
+
+// export const connectDB = async () => {
+//   if (pool) return pool; // already created
+
+//   pool = mysql.createPool({
+//     host: process.env.MYSQLHOST,
+//     user: process.env.MYSQLUSER,
+//     password: process.env.MYSQLPASSWORD,
+//     database: process.env.MYSQLDATABASE,
+//     port: Number(process.env.MYSQLPORT) || 3306,
+//     waitForConnections: true,
+//     connectionLimit: 10,
+//     queueLimit: 0,
+//   });
+
+//   // Test connection
+//   const [rows] = await pool.query('SELECT 1 + 1 AS result');
+//   console.log('DB Test Result:', rows);
+
+//   console.log('✅ MySQL connected');
+//   return pool;
+// };
+
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
@@ -35,23 +64,36 @@ dotenv.config();
 export let pool: mysql.Pool;
 
 export const connectDB = async () => {
-  if (pool) return pool; // already created
+  if (pool) return pool; // Already connected
 
-  pool = mysql.createPool({
-    host: process.env.MYSQLHOST,
-    user: process.env.MYSQLUSER,
-    password: process.env.MYSQLPASSWORD,
-    database: process.env.MYSQLDATABASE,
-    port: Number(process.env.MYSQLPORT) || 3306,
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-  });
+  try {
+    // Debug log to verify Railway env variables
+    console.log('🔍 DB ENV:', {
+      host: process.env.MYSQLHOST,
+      user: process.env.MYSQLUSER,
+      db: process.env.MYSQLDATABASE,
+      port: process.env.MYSQLPORT,
+    });
 
-  // Test connection
-  const [rows] = await pool.query('SELECT 1 + 1 AS result');
-  console.log('DB Test Result:', rows);
+    pool = mysql.createPool({
+      host: process.env.MYSQLHOST,
+      user: process.env.MYSQLUSER,
+      password: process.env.MYSQLPASSWORD,
+      database: process.env.MYSQLDATABASE,
+      port: Number(process.env.MYSQLPORT) || 3306,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+    });
 
-  console.log('✅ MySQL connected');
-  return pool;
+    // Test query
+    const [rows] = await pool.query('SELECT 1 + 1 AS result');
+    console.log('DB Test Result:', rows);
+
+    console.log('✅ MySQL connected');
+    return pool;
+  } catch (err) {
+    console.error('❌ MySQL Connection Failed:', err);
+    throw err; // So server.ts can catch it
+  }
 };
