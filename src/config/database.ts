@@ -55,48 +55,35 @@
 //   return pool;
 // };
 
-
-
 /// DATABASE CHANGED for hosting
 
+// src/config/database.ts
 // src/config/database.ts
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-export let pool: mysql.Pool;
+const pool = mysql.createPool({
+  host: process.env.DB_HOST || process.env.MYSQLHOST,
+  port: Number(process.env.DB_PORT || process.env.MYSQLPORT || 3306),
+  user: process.env.DB_USER || process.env.MYSQLUSER,
+  password: process.env.DB_PASSWORD || process.env.MYSQLPASSWORD,
+  database: process.env.DB_NAME || process.env.MYSQLDATABASE,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
+});
 
 export const connectDB = async () => {
-  if (pool) return pool;
-
-  console.log('DB ENV VALUES:', {
-    host: process.env.MYSQLHOST,
-    port: process.env.MYSQLPORT,
-    user: process.env.MYSQLUSER,
-    db: process.env.MYSQLDATABASE,
-  });
-
   try {
-    pool = mysql.createPool({
-      host: process.env.MYSQLHOST,
-      user: process.env.MYSQLUSER,
-      password: process.env.MYSQLPASSWORD,
-      database: process.env.MYSQLDATABASE,
-      port: Number(process.env.MYSQLPORT) || 3306,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      // uncomment if Railway requires SSL:
-      // ssl: { rejectUnauthorized: false },
-    });
-
-    const [rows] = await pool.query('SELECT 1 + 1 AS result');
-    console.log('DB Test Result:', rows);
+    const conn = await pool.getConnection();
     console.log('✅ MySQL connected');
-    return pool;
+    conn.release();
   } catch (err) {
     console.error('❌ MySQL connection error:', err);
-    throw err; // this is what you see as "Failed to start server"
+    throw err; // will be caught in startServer
   }
 };
+
+export default pool;
