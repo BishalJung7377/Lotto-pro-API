@@ -178,6 +178,13 @@ const startServer = async () => {
       console.log('  GET    /api/auth/profile');
       console.log('  POST   /api/super-admin/login');
       console.log('  GET    /api/super-admin/profile');
+      console.log('  PUT    /api/super-admin/profile');
+      console.log('  POST   /api/super-admin/lotteries');
+      console.log('  GET    /api/super-admin/lotteries');
+      console.log('  POST   /api/super-admin/lotteries/:lotteryId/assign');
+      console.log('  DELETE /api/super-admin/lotteries/:lotteryId/assign');
+      console.log('  PATCH  /api/super-admin/lotteries/:lotteryId/status');
+      console.log('  DELETE /api/super-admin/lotteries/:lotteryId');
       console.log('  GET    /api/store');
       console.log('  POST   /api/store');
       console.log('  GET    /api/lottery/types');

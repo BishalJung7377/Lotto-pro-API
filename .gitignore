@@ -24,3 +24,8 @@ Thumbs.db
 
 # Testing
 coverage/
+
+
+# Ignore database config
+src/config/database.ts
+database.ts

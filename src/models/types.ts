@@ -110,3 +110,24 @@ export interface SuperAdmin {
   password: string; // hashed
   created_at: Date;
 }
+
+///// lottery master
+
+export type LotteryStatus = 'active' | 'inactive';
+export interface LotteryMaster {
+  lottery_id: number;
+  lottery_name: string;
+  price: number;
+  start_number: number;
+  end_number: number;
+  status: LotteryStatus;
+  image_url?: string;
+  created_at: Date;
+}
+
+//// super admin and lottery master 
+export interface SuperAdminLottery {
+  super_admin_id: number;  // FK to SUPER_ADMIN
+  lottery_id: number;      // FK to LOTTERY_MASTER
+  assigned_at: Date;
+}
