@@ -3,12 +3,12 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/database';
 
-// Import routes
-import authRoutes from './routes/authRoutes';
-import storeRoutes from './routes/storeRoutes';
-import lotteryRoutes from './routes/lotteryRoutes';
-import scanRoutes from './routes/scanRoutes';
-import reportRoutes from './routes/reportRoutes';
+// Import routes - temporarily commented to test if routes are causing crash
+// import authRoutes from './routes/authRoutes';
+// import storeRoutes from './routes/storeRoutes';
+// import lotteryRoutes from './routes/lotteryRoutes';
+// import scanRoutes from './routes/scanRoutes';
+// import reportRoutes from './routes/reportRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -17,31 +17,86 @@ const app: Application = express();
 const PORT = Number(process.env.PORT) || 4800;
 
 // Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(cors({
+  origin: '*', // Allow all origins for now (tighten this later in production)
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
 app.use((req: Request, res: Response, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`📨 ${req.method} ${req.path}`);
+  console.log(`   Time: ${new Date().toISOString()}`);
+  console.log(`   Headers:`, JSON.stringify(req.headers, null, 2));
+  if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+    console.log(`   Body:`, JSON.stringify(req.body, null, 2));
+  }
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+  // Log response
+  const originalSend = res.send;
+  res.send = function (data: any) {
+    console.log(`📤 Response ${res.statusCode} for ${req.method} ${req.path}`);
+    console.log(`   Response:`, typeof data === 'string' ? data.substring(0, 200) : JSON.stringify(data).substring(0, 200));
+    return originalSend.call(this, data);
+  };
+
   next();
 });
 
 // Health check endpoint
-app.get('/health', (req: Request, res: Response) => {
+app.get('/health', async (req: Request, res: Response) => {
+  try {
+    const { pool } = await import('./config/database');
+
+    // Test database connection
+    if (pool) {
+      await pool.query('SELECT 1');
+      res.status(200).json({
+        status: 'OK',
+        message: 'Lottery Pro Backend API is running',
+        database: 'Connected',
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      res.status(503).json({
+        status: 'ERROR',
+        message: 'Database not initialized',
+        database: 'Disconnected',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  } catch (error) {
+    res.status(503).json({
+      status: 'ERROR',
+      message: 'Service unavailable',
+      database: 'Error',
+      timestamp: new Date().toISOString(),
+    });
+  }
+});
+
+// Simple POST test endpoint
+app.post('/test', (req: Request, res: Response) => {
+  console.log('🧪 TEST endpoint hit');
+  console.log('Body received:', req.body);
   res.status(200).json({
-    status: 'OK',
-    message: 'Lottery Pro Backend API is running',
+    message: 'POST test successful',
+    bodyReceived: req.body,
     timestamp: new Date().toISOString(),
   });
 });
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/stores', storeRoutes);
-app.use('/api/lottery', lotteryRoutes);
-app.use('/api/scan', scanRoutes);
-app.use('/api/reports', reportRoutes);
+// API Routes - temporarily commented to test if routes are causing crash
+// app.use('/api/auth', authRoutes);
+// app.use('/api/stores', storeRoutes);
+// app.use('/api/lottery', lotteryRoutes);
+// app.use('/api/scan', scanRoutes);
+// app.use('/api/reports', reportRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -53,18 +108,51 @@ app.use((req: Request, res: Response) => {
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: any) => {
-  console.error('Error:', err);
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.error('❌ ERROR HANDLER TRIGGERED');
+  console.error('   Path:', req.method, req.path);
+  console.error('   Error:', err.message);
+  console.error('   Stack:', err.stack);
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
   res.status(500).json({
     error: 'Internal Server Error',
     message: err.message,
   });
 });
 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.error('❌ UNHANDLED PROMISE REJECTION');
+  console.error('   Reason:', reason);
+  console.error('   Promise:', promise);
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.error('❌ UNCAUGHT EXCEPTION');
+  console.error('   Error:', error.message);
+  console.error('   Stack:', error.stack);
+  console.error('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+});
+
 // Start server
 const startServer = async () => {
   try {
-    // Connect to database
-    await connectDB();
+    console.log('🚀 Starting Lottery Pro Backend...');
+    console.log('📊 Environment Check:');
+    console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`   PORT: ${PORT}`);
+    console.log(`   DB Host: ${process.env.MYSQLHOST || process.env.DB_HOST || 'NOT SET'}`);
+    console.log(`   DB Name: ${process.env.MYSQLDATABASE || process.env.DB_NAME || 'NOT SET'}`);
+
+    // TEMPORARILY SKIP DATABASE - test if DB connection is causing 502
+    // console.log('🔄 Connecting to database...');
+    // await connectDB();
+    console.log('⚠️  SKIPPING DATABASE CONNECTION FOR TESTING');
 
     // Start listening - bind to 0.0.0.0 for Railway
     app.listen(PORT, '0.0.0.0', () => {
@@ -72,10 +160,11 @@ const startServer = async () => {
       console.log('🎰 Lottery Pro Backend API');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log(`✓ Server running on port ${PORT}`);
+      console.log(`✓ Listening on 0.0.0.0:${PORT}`);
       console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`✓ API URL: http://localhost:${PORT}`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       console.log('Available Routes:');
+      console.log('  GET    /health');
       console.log('  POST   /api/auth/register');
       console.log('  POST   /api/auth/login');
       console.log('  GET    /api/auth/profile');
@@ -88,7 +177,12 @@ const startServer = async () => {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     });
   } catch (error) {
-    console.error('Failed to start server:', error);
+    console.error('❌ FATAL: Failed to start server');
+    console.error('Error details:', error);
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
+    }
     process.exit(1);
   }
 };

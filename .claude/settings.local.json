@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm run build:*)",
       "Bash(where npm)",
-      "Bash(cmd /c npm run build)"
+      "Bash(cmd /c npm run build)",
+      "Bash(cmd /c \"npx tsc --noEmit 2>&1 | head -50\")"
     ],
     "deny": [],
     "ask": []

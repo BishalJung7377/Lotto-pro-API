@@ -157,40 +157,49 @@ export const connectDB = async () => {
   // If we've already created the pool, just reuse it
   if (pool) return pool;
 
-  // Support both Railway's MYSQL* vars and custom DB_* vars
-  const host = process.env.MYSQLHOST || process.env.DB_HOST;
-  const user = process.env.MYSQLUSER || process.env.DB_USER;
-  const password = process.env.MYSQLPASSWORD || process.env.DB_PASSWORD;
-  const database = process.env.MYSQLDATABASE || process.env.DB_NAME;
-  const port = process.env.MYSQLPORT || process.env.DB_PORT || '3306';
+  try {
+    // Support both Railway's MYSQL* vars and custom DB_* vars
+    const host = process.env.MYSQLHOST || process.env.DB_HOST;
+    const user = process.env.MYSQLUSER || process.env.DB_USER;
+    const password = process.env.MYSQLPASSWORD || process.env.DB_PASSWORD;
+    const database = process.env.MYSQLDATABASE || process.env.DB_NAME;
+    const port = process.env.MYSQLPORT || process.env.DB_PORT || '3306';
 
-  if (!host || !user || !password || !database) {
-    throw new Error('Missing database environment variables. Required: host, user, password, database');
+    if (!host || !user || !password || !database) {
+      console.error('❌ Missing database environment variables');
+      console.error('Required: MYSQLHOST/DB_HOST, MYSQLUSER/DB_USER, MYSQLPASSWORD/DB_PASSWORD, MYSQLDATABASE/DB_NAME');
+      throw new Error('Missing database environment variables');
+    }
+
+    console.log('🔍 DB Connection Config:', {
+      host,
+      user,
+      database,
+      port,
+    });
+
+    // Create the pool once
+    pool = mysql.createPool({
+      host,
+      user,
+      password,
+      database,
+      port: Number(port),
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      connectTimeout: 10000,
+    });
+
+    // Test connection
+    console.log('🔄 Testing database connection...');
+    const [rows] = await pool.query('SELECT 1 + 1 AS result');
+    console.log('✅ DB Test Result:', rows);
+    console.log('✅ MySQL connected successfully');
+
+    return pool;
+  } catch (error) {
+    console.error('❌ Database connection failed:', error);
+    throw error;
   }
-
-  console.log('🔍 DB ENV:', {
-    host,
-    user,
-    database,
-    port,
-  });
-
-  // Create the pool once
-  pool = mysql.createPool({
-    host,
-    user,
-    password,
-    database,
-    port: Number(port),
-    waitForConnections: true,
-    connectionLimit: 10,
-    queueLimit: 0,
-  });
-
-  // Test connection
-  const [rows] = await pool.query('SELECT 1 + 1 AS result');
-  console.log('DB Test Result:', rows);
-
-  console.log('✅ MySQL connected');
-  return pool;
 };
