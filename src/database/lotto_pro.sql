@@ -58,20 +58,18 @@ CREATE TABLE STORE (
     FOREIGN KEY(owner_id) REFERENCES STORE_OWNER(owner_id)
 );
 
--- Store Lottery Book Table
-CREATE TABLE STORE_LOTTERY_BOOK (
-    book_id INT PRIMARY KEY AUTO_INCREMENT,
+-- Store Lottery Inventory Table
+CREATE TABLE store_lottery_inventory (
+    id INT PRIMARY KEY AUTO_INCREMENT,
     store_id INT NOT NULL,
-    lottery_id INT NOT NULL,
-    activation_date TIMESTAMP NULL,
-    start_ticket_number INT NULL,
-    end_ticket_number INT NOT NULL,
-    closing_ticket_number INT NULL,
-    remaining_tickets INT NOT NULL,
+    lottery_type_id INT NOT NULL,
+    total_count INT NOT NULL,
+    current_count INT NOT NULL,
     status ENUM('inactive','active','finished') DEFAULT 'inactive',
-    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY(store_id) REFERENCES STORE(store_id),
-    FOREIGN KEY(lottery_id) REFERENCES LOTTERY_MASTER(lottery_id)
+    FOREIGN KEY(lottery_type_id) REFERENCES LOTTERY_MASTER(lottery_id)
 );
 
 -- Ticket Scan Log Table
@@ -82,7 +80,7 @@ CREATE TABLE TICKET_SCAN_LOG (
     scan_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     clerk_name VARCHAR(100),
     remarks VARCHAR(255),
-    FOREIGN KEY(book_id) REFERENCES STORE_LOTTERY_BOOK(book_id)
+    FOREIGN KEY(book_id) REFERENCES store_lottery_inventory(id)
 );
 
 -- Daily Report Table
@@ -102,7 +100,7 @@ CREATE TABLE DAILY_REPORT (
     FOREIGN KEY(store_id) REFERENCES STORE(store_id),
     FOREIGN KEY(owner_id) REFERENCES STORE_OWNER(owner_id),
     FOREIGN KEY(lottery_id) REFERENCES LOTTERY_MASTER(lottery_id),
-    FOREIGN KEY(book_id) REFERENCES STORE_LOTTERY_BOOK(book_id)
+    FOREIGN KEY(book_id) REFERENCES store_lottery_inventory(id)
 );
 
 -- Owner Report View
