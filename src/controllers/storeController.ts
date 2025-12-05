@@ -4,7 +4,10 @@ import { AuthRequest } from '../middleware/auth';
 import { CreateStoreRequest } from '../models/types';
 import { hashPassword } from '../utils/auth';
 
-export const getStores = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getStores = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.user?.id;
 
@@ -36,7 +39,10 @@ export const getStores = async (req: AuthRequest, res: Response): Promise<void> 
   }
 };
 
-export const getStoreById = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getStoreById = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.user?.id;
     const storeId = parseInt(req.params.id);
@@ -68,7 +74,10 @@ export const getStoreById = async (req: AuthRequest, res: Response): Promise<voi
   }
 };
 
-export const createStore = async (req: AuthRequest, res: Response): Promise<void> => {
+export const createStore = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.user?.id;
     const {
@@ -84,12 +93,17 @@ export const createStore = async (req: AuthRequest, res: Response): Promise<void
     if (!store_name || !lottery_ac_no || !lottery_pw) {
       res
         .status(400)
-        .json({ error: 'Store name, lottery account number, and password are required' });
+        .json({
+          error:
+            'Store name, lottery account number, and password are required',
+        });
       return;
     }
 
     if (!isValidLotteryAccountNumber(lottery_ac_no)) {
-      res.status(400).json({ error: 'Lottery account number must be 8 digits' });
+      res
+        .status(400)
+        .json({ error: 'Lottery account number must be 8 digits' });
       return;
     }
 
@@ -151,7 +165,7 @@ export const createStore = async (req: AuthRequest, res: Response): Promise<void
 
     const inventoryPromises = (lotteryTypesResult as any[]).map((lt) =>
       pool.query(
-        'INSERT INTO store_lottery_inventory (store_id, lottery_type_id, total_count, current_count) VALUES (?, ?, ?, ?)',
+        'INSERT INTO store_lottery_book (store_id, lottery_type_id, total_count, current_count) VALUES (?, ?, ?, ?)',
         [store.id, lt.lottery_id, 100, 100]
       )
     );
@@ -168,7 +182,10 @@ export const createStore = async (req: AuthRequest, res: Response): Promise<void
   }
 };
 
-export const updateStore = async (req: AuthRequest, res: Response): Promise<void> => {
+export const updateStore = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.user?.id;
     const storeId = parseInt(req.params.id);
@@ -194,7 +211,9 @@ export const updateStore = async (req: AuthRequest, res: Response): Promise<void
 
     if (lottery_ac_no) {
       if (!isValidLotteryAccountNumber(lottery_ac_no)) {
-        res.status(400).json({ error: 'Lottery account number must be 8 digits' });
+        res
+          .status(400)
+          .json({ error: 'Lottery account number must be 8 digits' });
         return;
       }
 
@@ -204,7 +223,9 @@ export const updateStore = async (req: AuthRequest, res: Response): Promise<void
       );
 
       if ((existing as any[]).length > 0) {
-        res.status(400).json({ error: 'Lottery account number already in use' });
+        res
+          .status(400)
+          .json({ error: 'Lottery account number already in use' });
         return;
       }
     }
@@ -255,7 +276,9 @@ export const updateStore = async (req: AuthRequest, res: Response): Promise<void
     updates.push('updated_at = CURRENT_TIMESTAMP');
 
     await pool.query(
-      `UPDATE STORES SET ${updates.join(', ')} WHERE store_id = ? AND owner_id = ?`,
+      `UPDATE STORES SET ${updates.join(
+        ', '
+      )} WHERE store_id = ? AND owner_id = ?`,
       [...values, storeId, userId]
     );
 
@@ -285,7 +308,10 @@ export const updateStore = async (req: AuthRequest, res: Response): Promise<void
   }
 };
 
-export const deleteStore = async (req: AuthRequest, res: Response): Promise<void> => {
+export const deleteStore = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const userId = req.user?.id;
     const storeId = parseInt(req.params.id);
@@ -306,8 +332,12 @@ export const deleteStore = async (req: AuthRequest, res: Response): Promise<void
       );
     }
 
-    await pool.query('DELETE FROM store_lottery_inventory WHERE store_id = ?', [storeId]);
-    await pool.query('DELETE FROM scanned_tickets WHERE store_id = ?', [storeId]);
+    await pool.query('DELETE FROM store_lottery_inventory WHERE store_id = ?', [
+      storeId,
+    ]);
+    await pool.query('DELETE FROM scanned_tickets WHERE store_id = ?', [
+      storeId,
+    ]);
 
     const [result] = await pool.query(
       'DELETE FROM STORES WHERE store_id = ? AND owner_id = ?',
