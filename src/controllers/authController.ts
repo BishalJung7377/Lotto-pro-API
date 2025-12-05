@@ -116,7 +116,6 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       });
 
       res.status(200).json({
-        role: 'super_admin',
         admin: {
           id: admin.super_admin_id,
           name: admin.name,
@@ -181,11 +180,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     };
 
     res.status(200).json({
-      role: 'store_owner',
       user: userResponse,
       token,
       redirectTo: '/api/auth/profile',
-      message: 'Store Owner login successful',
+      message: 'Store owner login successful',
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -217,7 +215,6 @@ export const getProfile = async (
       }
 
       res.status(200).json({
-        role: 'super_admin',
         admin: (admins as any[])[0],
       });
       return;
@@ -234,7 +231,6 @@ export const getProfile = async (
     }
 
     res.status(200).json({
-      role: 'store_owner',
       user: (owners as any[])[0],
     });
   } catch (error) {
