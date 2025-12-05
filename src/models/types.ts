@@ -92,7 +92,6 @@ export interface CreateStoreRequest {
   city?: string;
   state?: string;
   zipcode?: string;
-  contact_number?: string;
   lottery_ac_no: string;
   lottery_pw: string;
 }

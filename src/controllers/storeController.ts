@@ -17,7 +17,6 @@ export const getStores = async (req: AuthRequest, res: Response): Promise<void> 
         s.city,
         s.state,
         s.zipcode,
-        s.contact_number,
         s.lottery_ac_no,
         s.created_at,
         COUNT(DISTINCT sli.id) as lottery_count,
@@ -51,7 +50,6 @@ export const getStoreById = async (req: AuthRequest, res: Response): Promise<voi
         city,
         state,
         zipcode,
-        contact_number,
         lottery_ac_no,
         created_at
       FROM STORES WHERE store_id = ? AND owner_id = ?`,
@@ -79,7 +77,6 @@ export const createStore = async (req: AuthRequest, res: Response): Promise<void
       city,
       state,
       zipcode,
-      contact_number,
       lottery_ac_no,
       lottery_pw,
     }: CreateStoreRequest = req.body;
@@ -115,8 +112,8 @@ export const createStore = async (req: AuthRequest, res: Response): Promise<void
 
     const [storeResult] = await pool.query(
       `INSERT INTO STORES
-        (owner_id, store_name, address, city, state, zipcode, contact_number, lottery_ac_no, lottery_pw)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (owner_id, store_name, address, city, state, zipcode, lottery_ac_no, lottery_pw)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         store_name,
@@ -124,7 +121,6 @@ export const createStore = async (req: AuthRequest, res: Response): Promise<void
         city || null,
         state || null,
         zipcode || null,
-        contact_number || null,
         lottery_ac_no,
         hashedLotteryPassword,
       ]
@@ -141,7 +137,6 @@ export const createStore = async (req: AuthRequest, res: Response): Promise<void
         city,
         state,
         zipcode,
-        contact_number,
         lottery_ac_no,
         created_at
       FROM STORES WHERE store_id = ?`,
@@ -183,7 +178,6 @@ export const updateStore = async (req: AuthRequest, res: Response): Promise<void
       city,
       state,
       zipcode,
-      contact_number,
       lottery_ac_no,
       lottery_pw,
     } = req.body;
@@ -238,10 +232,6 @@ export const updateStore = async (req: AuthRequest, res: Response): Promise<void
       updates.push('zipcode = ?');
       values.push(zipcode);
     }
-    if (contact_number) {
-      updates.push('contact_number = ?');
-      values.push(contact_number);
-    }
     if (lottery_ac_no) {
       updates.push('lottery_ac_no = ?');
       values.push(lottery_ac_no);
@@ -278,7 +268,6 @@ export const updateStore = async (req: AuthRequest, res: Response): Promise<void
         city,
         state,
         zipcode,
-        contact_number,
         lottery_ac_no,
         created_at,
         updated_at

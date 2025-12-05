@@ -231,7 +231,6 @@ export const getProfile = async (
           city,
           state,
           zipcode,
-          contact_number,
           lottery_ac_no,
           created_at
         FROM STORES WHERE store_id = ?`,
