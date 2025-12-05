@@ -14,7 +14,7 @@ import reportRoutes from './routes/reportRoutes';
 dotenv.config();
 
 const app: Application = express();
-const PORT = process.env.PORT || 4800;
+const PORT = parseInt(process.env.PORT || '4800', 10);
 
 // Middleware
 app.use(cors());
