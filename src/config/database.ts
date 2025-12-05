@@ -103,45 +103,39 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-export let pool: mysql.Pool | null = null;
+export let pool: mysql.Pool; // <-- no | null
 
 export const connectDB = async () => {
   if (pool) return pool; // already created
 
-  try {
-    // Log what the backend actually sees
-    console.log('🔍 DB ENV:', {
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      db: process.env.DB_NAME,
-      port: process.env.DB_PORT,
-    });
+  const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT } = process.env;
 
-    const { DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT } = process.env;
-
-    if (!DB_HOST || !DB_USER || !DB_PASSWORD || !DB_NAME || !DB_PORT) {
-      throw new Error('Missing one or more DB_* environment variables');
-    }
-
-    pool = mysql.createPool({
-      host: DB_HOST,
-      user: DB_USER,
-      password: DB_PASSWORD,
-      database: DB_NAME,
-      port: Number(DB_PORT) || 3306,
-      waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-    });
-
-    // Test connection
-    const [rows] = await pool.query('SELECT 1 + 1 AS result');
-    console.log('DB Test Result:', rows);
-
-    console.log('✅ MySQL connected');
-    return pool;
-  } catch (err) {
-    console.error('❌ MySQL Connection Failed:', err);
-    throw err;
+  if (!DB_HOST || !DB_USER || !DB_PASSWORD || !DB_NAME || !DB_PORT) {
+    throw new Error('Missing one or more DB_* environment variables');
   }
+
+  console.log('🔍 DB ENV:', {
+    host: DB_HOST,
+    user: DB_USER,
+    db: DB_NAME,
+    port: DB_PORT,
+  });
+
+  pool = mysql.createPool({
+    host: DB_HOST,
+    user: DB_USER,
+    password: DB_PASSWORD,
+    database: DB_NAME,
+    port: Number(DB_PORT) || 3306,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0,
+  });
+
+  // Test connection
+  const [rows] = await pool.query('SELECT 1 + 1 AS result');
+  console.log('DB Test Result:', rows);
+
+  console.log('✅ MySQL connected');
+  return pool;
 };
