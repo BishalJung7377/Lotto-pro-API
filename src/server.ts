@@ -3,12 +3,12 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { connectDB } from './config/database';
 
-// Import routes - temporarily commented to test if routes are causing crash
-// import authRoutes from './routes/authRoutes';
-// import storeRoutes from './routes/storeRoutes';
-// import lotteryRoutes from './routes/lotteryRoutes';
-// import scanRoutes from './routes/scanRoutes';
-// import reportRoutes from './routes/reportRoutes';
+// Import routes
+import authRoutes from './routes/authRoutes';
+import storeRoutes from './routes/storeRoutes';
+import lotteryRoutes from './routes/lotteryRoutes';
+import scanRoutes from './routes/scanRoutes';
+import reportRoutes from './routes/reportRoutes';
 
 // Load environment variables
 dotenv.config();
@@ -91,12 +91,12 @@ app.post('/test', (req: Request, res: Response) => {
   });
 });
 
-// API Routes - temporarily commented to test if routes are causing crash
-// app.use('/api/auth', authRoutes);
-// app.use('/api/stores', storeRoutes);
-// app.use('/api/lottery', lotteryRoutes);
-// app.use('/api/scan', scanRoutes);
-// app.use('/api/reports', reportRoutes);
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/stores', storeRoutes);
+app.use('/api/lottery', lotteryRoutes);
+app.use('/api/scan', scanRoutes);
+app.use('/api/reports', reportRoutes);
 
 // 404 handler
 app.use((req: Request, res: Response) => {
@@ -149,10 +149,16 @@ const startServer = async () => {
     console.log(`   DB Host: ${process.env.MYSQLHOST || process.env.DB_HOST || 'NOT SET'}`);
     console.log(`   DB Name: ${process.env.MYSQLDATABASE || process.env.DB_NAME || 'NOT SET'}`);
 
-    // TEMPORARILY SKIP DATABASE - test if DB connection is causing 502
-    // console.log('🔄 Connecting to database...');
-    // await connectDB();
-    console.log('⚠️  SKIPPING DATABASE CONNECTION FOR TESTING');
+    // Connect to database
+    console.log('🔄 Connecting to database...');
+    try {
+      await connectDB();
+      console.log('✅ Database connected successfully');
+    } catch (dbError) {
+      console.error('⚠️  Database connection failed, but continuing anyway');
+      console.error('   Error:', dbError);
+      // Continue without DB for now - don't crash
+    }
 
     // Start listening - bind to 0.0.0.0 for Railway
     app.listen(PORT, '0.0.0.0', () => {
