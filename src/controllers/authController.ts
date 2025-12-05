@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import type { PoolConnection } from 'mysql2/promise';
 import { pool } from '../config/database';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
 import { LoginRequest, RegisterRequest, SuperAdmin } from '../models/types';
@@ -236,5 +237,169 @@ export const getProfile = async (
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const updateStoreOwnerProfile = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const user = req.user;
+    const { full_name, email, phone, password } = req.body;
+
+    if (!user || user.role !== 'store_owner') {
+      res.status(403).json({ error: 'Only store owners can update this profile' });
+      return;
+    }
+
+    if (!full_name && !email && !phone && !password) {
+      res
+        .status(400)
+        .json({ error: 'Provide at least one field to update (name, email, phone, password)' });
+      return;
+    }
+
+    if (email) {
+      const [existing] = await pool.query(
+        'SELECT owner_id FROM STORE_OWNER WHERE email = ? AND owner_id != ?',
+        [email, user.id]
+      );
+
+      if ((existing as any[]).length > 0) {
+        res.status(400).json({ error: 'Email already in use by another account' });
+        return;
+      }
+    }
+
+    const updates: string[] = [];
+    const values: any[] = [];
+
+    if (full_name) {
+      updates.push('name = ?');
+      values.push(full_name);
+    }
+
+    if (email) {
+      updates.push('email = ?');
+      values.push(email);
+    }
+
+    if (phone) {
+      updates.push('phone = ?');
+      values.push(phone);
+    }
+
+    if (password) {
+      const hashedPassword = await hashPassword(password);
+      updates.push('password = ?');
+      values.push(hashedPassword);
+    }
+
+    if (updates.length === 0) {
+      res.status(400).json({ error: 'Nothing to update' });
+      return;
+    }
+
+    values.push(user.id);
+
+    await pool.query(
+      `UPDATE STORE_OWNER SET ${updates.join(', ')} WHERE owner_id = ?`,
+      values
+    );
+
+    const [owners] = await pool.query(
+      'SELECT owner_id as id, name as full_name, email, phone, created_at FROM STORE_OWNER WHERE owner_id = ?',
+      [user.id]
+    );
+
+    res.status(200).json({
+      user: (owners as any[])[0],
+      message: 'Profile updated successfully',
+    });
+  } catch (error) {
+    console.error('Update store owner profile error:', error);
+    res.status(500).json({ error: 'Server error updating profile' });
+  }
+};
+
+export const deleteStoreOwnerAccount = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  let connection: PoolConnection | null = null;
+
+  try {
+    const user = req.user;
+
+    if (!user || user.role !== 'store_owner') {
+      res.status(403).json({ error: 'Only store owners can delete this account' });
+      return;
+    }
+
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [stores] = await connection.query(
+      'SELECT id FROM stores WHERE owner_id = ?',
+      [user.id]
+    );
+
+    const storeIds = (stores as any[]).map((store) => store.id);
+
+    if (storeIds.length > 0) {
+      const storePlaceholders = storeIds.map(() => '?').join(', ');
+
+      const [inventories] = await connection.query(
+        `SELECT id FROM store_lottery_inventory WHERE store_id IN (${storePlaceholders})`,
+        storeIds
+      );
+
+      const inventoryIds = (inventories as any[]).map((item) => item.id);
+
+      if (inventoryIds.length > 0) {
+        const inventoryPlaceholders = inventoryIds.map(() => '?').join(', ');
+
+        await connection.query(
+          `DELETE FROM tickets WHERE inventory_id IN (${inventoryPlaceholders})`,
+          inventoryIds
+        );
+      }
+
+      await connection.query(
+        `DELETE FROM store_lottery_inventory WHERE store_id IN (${storePlaceholders})`,
+        storeIds
+      );
+
+      await connection.query(
+        `DELETE FROM scanned_tickets WHERE store_id IN (${storePlaceholders})`,
+        storeIds
+      );
+
+      await connection.query(
+        `DELETE FROM stores WHERE id IN (${storePlaceholders}) AND owner_id = ?`,
+        [...storeIds, user.id]
+      );
+    }
+
+    await connection.query('DELETE FROM scanned_tickets WHERE scanned_by = ?', [user.id]);
+
+    await connection.query('DELETE FROM STORE_OWNER WHERE owner_id = ?', [user.id]);
+
+    await connection.commit();
+
+    res.status(200).json({
+      message: 'Store owner account and associated stores deleted successfully',
+    });
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    console.error('Delete store owner account error:', error);
+    res.status(500).json({ error: 'Server error deleting account' });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 };

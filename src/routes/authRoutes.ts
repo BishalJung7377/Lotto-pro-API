@@ -1,5 +1,11 @@
 import { Router } from 'express';
-import { register, login, getProfile } from '../controllers/authController';
+import {
+  register,
+  login,
+  getProfile,
+  updateStoreOwnerProfile,
+  deleteStoreOwnerAccount,
+} from '../controllers/authController';
 import { authMiddleware, generalAuthMiddleware } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 
@@ -11,5 +17,7 @@ router.post('/login', asyncHandler(login));
 
 // Protected routes
 router.get('/profile', generalAuthMiddleware, asyncHandler(getProfile));
+router.put('/profile', authMiddleware, asyncHandler(updateStoreOwnerProfile));
+router.delete('/profile', authMiddleware, asyncHandler(deleteStoreOwnerAccount));
 
 export default router;
