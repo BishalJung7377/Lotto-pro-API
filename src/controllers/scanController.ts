@@ -79,9 +79,9 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
 
     // Get inventory for this lottery type in this store
     const [inventoryResult] = await pool.query(
-      `SELECT sli.*, lt.name, lt.price
+      `SELECT sli.*, lm.lottery_name, lm.price
       FROM store_lottery_inventory sli
-      JOIN lottery_types lt ON sli.lottery_type_id = lt.id
+      JOIN LOTTERY_MASTER lm ON sli.lottery_type_id = lm.lottery_id
       WHERE sli.store_id = ? AND sli.lottery_type_id = ?`,
       [store_id, decoded.lottery_type_id]
     );
@@ -171,7 +171,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
       ticket,
       decoded,
       lottery: {
-        name: inventory.name,
+        name: inventory.lottery_name,
         price: inventory.price,
       },
       inventory: (updatedInventoryResult as any[])[0],
@@ -202,11 +202,11 @@ export const getScanHistory = async (req: AuthRequest, res: Response): Promise<v
     const [result] = await pool.query(
       `SELECT
         st.*,
-        lt.name as lottery_name,
-        lt.price as lottery_price,
+        lm.lottery_name as lottery_name,
+        lm.price as lottery_price,
         u.full_name as scanned_by_name
       FROM scanned_tickets st
-      LEFT JOIN lottery_types lt ON st.lottery_type_id = lt.id
+      LEFT JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
       LEFT JOIN users u ON st.scanned_by = u.id
       WHERE st.store_id = ?
       ORDER BY st.scanned_at DESC

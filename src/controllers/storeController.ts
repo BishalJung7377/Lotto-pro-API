@@ -146,13 +146,13 @@ export const createStore = async (req: AuthRequest, res: Response): Promise<void
 
     // Automatically create inventory for all lottery types
     const [lotteryTypesResult] = await pool.query(
-      'SELECT id FROM lottery_types WHERE active = true'
+      "SELECT lottery_id FROM LOTTERY_MASTER WHERE status = 'active'"
     );
 
     const inventoryPromises = (lotteryTypesResult as any[]).map((lt) =>
       pool.query(
         'INSERT INTO store_lottery_inventory (store_id, lottery_type_id, total_count, current_count) VALUES (?, ?, ?, ?)',
-        [store.id, lt.id, 100, 100]
+        [store.id, lt.lottery_id, 100, 100]
       )
     );
 

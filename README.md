@@ -354,10 +354,9 @@ Response includes:
 
 1. **users** - Store owners/managers
 2. **stores** - Lottery stores
-3. **lottery_types** - 50 different scratch-off lottery games
-4. **store_lottery_inventory** - Inventory per store
-5. **tickets** - Individual ticket tracking
-6. **scanned_tickets** - Scan history log
+3. **store_lottery_inventory** - Inventory per store
+4. **tickets** - Individual ticket tracking
+5. **scanned_tickets** - Scan history log
 
 ## Error Handling
 

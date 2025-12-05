@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 export const getLotteryTypes = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const [result] = await pool.query(
-      'SELECT * FROM lottery_types WHERE active = true ORDER BY price, name'
+      "SELECT * FROM LOTTERY_MASTER WHERE status = 'active' ORDER BY price, lottery_name"
     );
 
     res.status(200).json({ lotteryTypes: result });
@@ -39,14 +39,16 @@ export const getStoreInventory = async (req: AuthRequest, res: Response): Promis
         sli.lottery_type_id,
         sli.total_count,
         sli.current_count,
-        lt.name,
-        lt.price,
-        lt.image_emoji,
-        lt.description
+        lm.lottery_name,
+        lm.price,
+        lm.image_url,
+        lm.start_number,
+        lm.end_number,
+        lm.status
       FROM store_lottery_inventory sli
-      JOIN lottery_types lt ON sli.lottery_type_id = lt.id
+      JOIN LOTTERY_MASTER lm ON sli.lottery_type_id = lm.lottery_id
       WHERE sli.store_id = ?
-      ORDER BY lt.price, lt.name`,
+      ORDER BY lm.price, lm.lottery_name`,
       [storeId]
     );
 
@@ -78,12 +80,14 @@ export const getLotteryDetail = async (req: AuthRequest, res: Response): Promise
     const [inventoryResult] = await pool.query(
       `SELECT
         sli.*,
-        lt.name,
-        lt.price,
-        lt.image_emoji,
-        lt.description
+        lm.lottery_name,
+        lm.price,
+        lm.image_url,
+        lm.start_number,
+        lm.end_number,
+        lm.status
       FROM store_lottery_inventory sli
-      JOIN lottery_types lt ON sli.lottery_type_id = lt.id
+      JOIN LOTTERY_MASTER lm ON sli.lottery_type_id = lm.lottery_id
       WHERE sli.store_id = ? AND sli.lottery_type_id = ?`,
       [storeId, lotteryTypeId]
     );

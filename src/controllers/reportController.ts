@@ -23,7 +23,7 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
     // Get inventory summary
     const [inventorySummary] = await pool.query(
       `SELECT
-        COUNT(*) as total_lottery_types,
+        COUNT(*) as total_lotteries,
         SUM(total_count) as total_tickets,
         SUM(current_count) as available_tickets,
         SUM(total_count - current_count) as sold_tickets
@@ -35,16 +35,16 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
     // Get revenue by lottery type
     const [revenueByLottery] = await pool.query(
       `SELECT
-        lt.id,
-        lt.name,
-        lt.price,
-        lt.image_emoji,
+        lm.lottery_id as id,
+        lm.lottery_name,
+        lm.price,
+        lm.image_url,
         sli.total_count,
         sli.current_count,
         (sli.total_count - sli.current_count) as sold_count,
-        (sli.total_count - sli.current_count) * lt.price as revenue
+        (sli.total_count - sli.current_count) * lm.price as revenue
       FROM store_lottery_inventory sli
-      JOIN lottery_types lt ON sli.lottery_type_id = lt.id
+      JOIN LOTTERY_MASTER lm ON sli.lottery_type_id = lm.lottery_id
       WHERE sli.store_id = ?
       ORDER BY revenue DESC`,
       [storeId]
@@ -60,11 +60,11 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
     const [recentScans] = await pool.query(
       `SELECT
         st.scanned_at,
-        lt.name as lottery_name,
-        lt.price,
+        lm.lottery_name as lottery_name,
+        lm.price,
         st.ticket_number
       FROM scanned_tickets st
-      LEFT JOIN lottery_types lt ON st.lottery_type_id = lt.id
+      LEFT JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
       WHERE st.store_id = ?
       ORDER BY st.scanned_at DESC
       LIMIT 20`,
@@ -76,9 +76,9 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
       `SELECT
         DATE(scanned_at) as date,
         COUNT(*) as tickets_sold,
-        SUM(lt.price) as daily_revenue
+        SUM(lm.price) as daily_revenue
       FROM scanned_tickets st
-      LEFT JOIN lottery_types lt ON st.lottery_type_id = lt.id
+      LEFT JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
       WHERE st.store_id = ?
         AND scanned_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
       GROUP BY DATE(scanned_at)
@@ -123,14 +123,15 @@ export const getLotteryReport = async (req: AuthRequest, res: Response): Promise
     const [lotteryResult] = await pool.query(
       `SELECT
         sli.*,
-        lt.name,
-        lt.price,
-        lt.image_emoji,
-        lt.description,
+        lm.lottery_name,
+        lm.price,
+        lm.image_url,
+        lm.start_number,
+        lm.end_number,
         (sli.total_count - sli.current_count) as sold_count,
-        (sli.total_count - sli.current_count) * lt.price as revenue
+        (sli.total_count - sli.current_count) * lm.price as revenue
       FROM store_lottery_inventory sli
-      JOIN lottery_types lt ON sli.lottery_type_id = lt.id
+      JOIN LOTTERY_MASTER lm ON sli.lottery_type_id = lm.lottery_id
       WHERE sli.store_id = ? AND sli.lottery_type_id = ?`,
       [storeId, lotteryTypeId]
     );
@@ -201,15 +202,15 @@ export const getSalesAnalytics = async (req: AuthRequest, res: Response): Promis
     // Sales by lottery type
     const [salesByType] = await pool.query(
       `SELECT
-        lt.name,
-        lt.price,
+        lm.lottery_name,
+        lm.price,
         COUNT(*) as tickets_sold,
-        SUM(lt.price) as revenue
+        SUM(lm.price) as revenue
       FROM scanned_tickets st
-      JOIN lottery_types lt ON st.lottery_type_id = lt.id
+      JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
       WHERE st.store_id = ?
         AND st.scanned_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
-      GROUP BY lt.id, lt.name, lt.price
+      GROUP BY lm.lottery_id, lm.lottery_name, lm.price
       ORDER BY revenue DESC`,
       [storeId, days]
     );

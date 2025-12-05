@@ -25,12 +25,13 @@ export interface Store {
 }
 
 export interface LotteryType {
-  id: number;
-  name: string;
+  lottery_id: number;
+  lottery_name: string;
   price: number;
-  image_emoji?: string;
-  description?: string;
-  active: boolean;
+  start_number: number;
+  end_number: number;
+  status: LotteryStatus;
+  image_url?: string;
   created_at: Date;
   updated_at: Date;
 }
