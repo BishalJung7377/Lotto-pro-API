@@ -27,7 +27,10 @@ export interface Store {
 export interface LotteryType {
   lottery_id: number;
   lottery_name: string;
+  lottery_number: string;
   price: number;
+  launch_date?: string;
+  state?: string;
   start_number: number;
   end_number: number;
   status: LotteryStatus;
@@ -130,12 +133,16 @@ export type LotteryStatus = 'active' | 'inactive';
 export interface LotteryMaster {
   lottery_id: number;
   lottery_name: string;
+  lottery_number: string;
   price: number;
+  launch_date?: string;
+  state?: string;
   start_number: number;
   end_number: number;
   status: LotteryStatus;
   image_url?: string;
   created_at: Date;
+  updated_at?: Date;
 }
 
 //// super admin and lottery master 

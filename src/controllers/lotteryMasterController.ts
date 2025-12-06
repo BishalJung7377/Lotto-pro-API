@@ -9,11 +9,15 @@ const ASSIGN_TABLE = 'SUPER_ADMIN_LOTTERY';
 const mapLotteryRow = (row: any) => ({
   lottery_id: row.lottery_id,
   lottery_name: row.lottery_name,
+  lottery_number: row.lottery_number,
   price: row.price,
+  launch_date: row.launch_date,
+  state: row.state,
   start_number: row.start_number,
   end_number: row.end_number,
   status: row.status,
   created_at: row.created_at,
+  updated_at: row.updated_at,
   image_url: row.image_url,
   assigned_to_caller: Boolean(row.assigned_to_caller),
   creator: row.creator_id
@@ -65,22 +69,60 @@ const validateLotteryPayload = (body: any): {
   errors?: string;
   data?: {
     lottery_name: string;
+    lottery_number: string;
     price: number;
+    launch_date?: string;
+    state?: string;
     start_number: number;
     end_number: number;
     status: LotteryStatus;
     image_url?: string;
   };
 } => {
-  const { lottery_name, price, start_number, end_number, status, image_url } =
+  const {
+    lottery_name,
+    lottery_number,
+    price,
+    launch_date,
+    state,
+    start_number,
+    end_number,
+    status,
+    image_url,
+  } =
     body;
 
   if (!lottery_name || typeof lottery_name !== 'string') {
     return { valid: false, errors: 'lottery_name is required' };
   }
 
+  if (
+    !lottery_number ||
+    typeof lottery_number !== 'string' ||
+    !/^\d{3}$/.test(lottery_number.trim())
+  ) {
+    return { valid: false, errors: 'lottery_number must be a 3-digit string' };
+  }
+
   if (price === undefined || isNaN(Number(price)) || Number(price) <= 0) {
     return { valid: false, errors: 'price must be a positive number' };
+  }
+
+  let normalizedLaunchDate: string | undefined;
+  if (launch_date) {
+    const date = new Date(launch_date);
+    if (isNaN(date.getTime())) {
+      return { valid: false, errors: 'launch_date must be a valid date' };
+    }
+    normalizedLaunchDate = date.toISOString().split('T')[0];
+  }
+
+  let normalizedState: string | undefined;
+  if (state !== undefined) {
+    if (typeof state !== 'string') {
+      return { valid: false, errors: 'state must be a string' };
+    }
+    normalizedState = state.trim();
   }
 
   if (
@@ -111,7 +153,10 @@ const validateLotteryPayload = (body: any): {
     valid: true,
     data: {
       lottery_name: lottery_name.trim(),
+      lottery_number: lottery_number.trim(),
       price: Number(price),
+      launch_date: normalizedLaunchDate,
+      state: normalizedState,
       start_number: Number(start_number),
       end_number: Number(end_number),
       status: lotteryStatus,
@@ -138,7 +183,17 @@ export const createLotteryMaster = async (
       return;
     }
 
-    const { lottery_name, price, start_number, end_number, status, image_url } =
+    const {
+      lottery_name,
+      lottery_number,
+      price,
+      launch_date,
+      state,
+      start_number,
+      end_number,
+      status,
+      image_url,
+    } =
       validation.data;
 
     const [existingLottery] = await pool.query(
@@ -153,10 +208,30 @@ export const createLotteryMaster = async (
       return;
     }
 
+    const [existingNumber] = await pool.query(
+      `SELECT lottery_id FROM ${LOTTERY_TABLE} WHERE lottery_number = ?`,
+      [lottery_number]
+    );
+
+    if ((existingNumber as any[]).length > 0) {
+      res.status(400).json({ error: 'Lottery with this number already exists' });
+      return;
+    }
+
     const [insertResult] = await pool.query(
-      `INSERT INTO ${LOTTERY_TABLE} (lottery_name, price, start_number, end_number, status, image_url)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [lottery_name, price, start_number, end_number, status, image_url ?? null]
+      `INSERT INTO ${LOTTERY_TABLE} (lottery_name, lottery_number, price, launch_date, state, start_number, end_number, status, image_url)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        lottery_name,
+        lottery_number,
+        price,
+        launch_date ?? null,
+        state ?? null,
+        start_number,
+        end_number,
+        status,
+        image_url ?? null,
+      ]
     );
 
     const lotteryId = (insertResult as any).insertId;
