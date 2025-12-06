@@ -79,7 +79,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
 
     // Get inventory for this lottery type in this store
     const [inventoryResult] = await pool.query(
-      `SELECT sli.*, lm.lottery_name, lm.price
+      `SELECT sli.*, lm.lottery_name, lm.lottery_number, lm.price, lm.launch_date, lm.state
       FROM store_lottery_inventory sli
       JOIN LOTTERY_MASTER lm ON sli.lottery_type_id = lm.lottery_id
       WHERE sli.store_id = ? AND sli.lottery_type_id = ?`,

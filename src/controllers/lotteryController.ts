@@ -5,7 +5,7 @@ import { AuthRequest } from '../middleware/auth';
 export const getLotteryTypes = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const [result] = await pool.query(
-      "SELECT * FROM LOTTERY_MASTER WHERE status = 'active' ORDER BY price, lottery_name"
+      "SELECT lottery_id, lottery_name, lottery_number, price, launch_date, state, start_number, end_number, status, image_url FROM LOTTERY_MASTER WHERE status = 'active' ORDER BY price, lottery_name"
     );
 
     res.status(200).json({ lotteryTypes: result });
@@ -40,7 +40,10 @@ export const getStoreInventory = async (req: AuthRequest, res: Response): Promis
         sli.total_count,
         sli.current_count,
         lm.lottery_name,
+        lm.lottery_number,
         lm.price,
+        lm.launch_date,
+        lm.state,
         lm.image_url,
         lm.start_number,
         lm.end_number,
@@ -81,7 +84,10 @@ export const getLotteryDetail = async (req: AuthRequest, res: Response): Promise
       `SELECT
         sli.*,
         lm.lottery_name,
+        lm.lottery_number,
         lm.price,
+        lm.launch_date,
+        lm.state,
         lm.image_url,
         lm.start_number,
         lm.end_number,
