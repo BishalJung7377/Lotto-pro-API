@@ -6,7 +6,7 @@ import { ScanTicketRequest } from '../models/types';
 interface ParsedScanPayload {
   lotteryNumber: string;
   ticketSerial: string;
-  packNumber: number;
+  packNumber?: number;
   raw: string;
 }
 
@@ -42,18 +42,14 @@ const parseScanInput = (payload: ScanTicketRequest): ParsedScanPayload => {
     }
 
     const lotteryNumber = numeric.substring(0, 3);
-    const ticketSerial = numeric.substring(3, 9);
     const packSegment = numeric.substring(numeric.length - 3);
     const packNumber = parseInt(packSegment, 10);
-
-    if (isNaN(packNumber)) {
-      throw new Error('Invalid barcode format: pack number not numeric');
-    }
+    const ticketSerial = numeric.substring(3, numeric.length - 3);
 
     return {
       lotteryNumber,
       ticketSerial,
-      packNumber,
+      packNumber: isNaN(packNumber) ? undefined : packNumber,
       raw,
     };
   }
@@ -82,10 +78,7 @@ const parseScanInput = (payload: ScanTicketRequest): ParsedScanPayload => {
   );
 };
 
-const calculateTotalTickets = (
-  startNumber: number,
-  endNumber: number
-): number => {
+const calculateTotalTickets = (startNumber: number, endNumber: number): number => {
   return Math.abs(endNumber - startNumber) + 1;
 };
 
@@ -167,17 +160,26 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    const totalTickets = calculateTotalTickets(
+    const totalTicketsFromMaster = calculateTotalTickets(
       master.start_number,
       master.end_number
     );
-    const soldCount = calculateSoldCount(
-      master.start_number,
-      master.end_number,
-      parsedScan.packNumber
-    );
-    const remainingCount = Math.max(totalTickets - soldCount, 0);
-    const inventoryStatus = remainingCount === 0 ? 'finished' : 'active';
+    const totalTickets = totalTicketsFromMaster;
+
+    let soldCount = 0;
+    if (parsedScan.packNumber !== undefined) {
+      soldCount = calculateSoldCount(
+        master.start_number,
+        master.end_number,
+        parsedScan.packNumber
+      );
+    }
+
+    const resolveStatus = (current: number, total: number): 'inactive' | 'active' | 'finished' => {
+      if (current >= total) return 'finished';
+      if (current > 0) return 'active';
+      return 'inactive';
+    };
 
     const [inventoryRows] = await pool.query(
       `SELECT * FROM STORE_LOTTERY_INVENTORY
@@ -188,6 +190,8 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
     let inventory;
 
     if ((inventoryRows as any[]).length === 0) {
+      const initialSold = parsedScan.packNumber !== undefined ? soldCount : 0;
+      const inventoryStatus = resolveStatus(initialSold, totalTickets);
       const [insertResult] = await pool.query(
         `INSERT INTO STORE_LOTTERY_INVENTORY
           (store_id, lottery_id, serial_number, total_count, current_count, status)
@@ -197,7 +201,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
           master.lottery_id,
           parsedScan.ticketSerial,
           totalTickets,
-          remainingCount,
+          initialSold,
           inventoryStatus,
         ]
       );
@@ -211,6 +215,13 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
     } else {
       inventory = (inventoryRows as any[])[0];
 
+      let newSoldCount = inventory.current_count;
+      if (parsedScan.packNumber !== undefined) {
+        newSoldCount = soldCount;
+      }
+
+      const inventoryStatus = resolveStatus(newSoldCount, totalTickets);
+
       await pool.query(
         `UPDATE STORE_LOTTERY_INVENTORY
          SET total_count = ?,
@@ -218,7 +229,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
              status = ?,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [totalTickets, remainingCount, inventoryStatus, inventory.id]
+        [totalTickets, newSoldCount, inventoryStatus, inventory.id]
       );
 
       const [updatedInventory] = await pool.query(
@@ -244,6 +255,11 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
       console.warn('Failed to log scan event:', logError);
     }
 
+    const remainingTickets = Math.max(
+      inventory.total_count - inventory.current_count,
+      0
+    );
+
     res.status(200).json({
       status: 'ok',
       game_active: true,
@@ -267,7 +283,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
         serial_number: inventory.serial_number,
         total_count: inventory.total_count,
         current_count: inventory.current_count,
-        remaining_tickets: inventory.current_count,
+        remaining_tickets: remainingTickets,
         status: inventory.status,
         updated_at: inventory.updated_at,
       },
