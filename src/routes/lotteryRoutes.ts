@@ -12,7 +12,7 @@ const router = Router();
 // All lottery routes require authentication
 router.use(authMiddleware);
 
-router.get('/types', getLotteryTypes);
+router.get('/types/store/:storeId', getLotteryTypes);
 router.get('/store/:storeId/inventory', getStoreInventory);
 router.get('/store/:storeId/lottery/:lotteryTypeId', getLotteryDetail);
 router.put('/store/:storeId/lottery/:lotteryTypeId', updateInventory);
