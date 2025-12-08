@@ -42,7 +42,7 @@ export interface LotteryType {
 export interface StoreLotteryInventory {
   id: number;
   store_id: number;
-  lottery_type_id: number;
+  lottery_id: number;
   serial_number?: string;
   total_count: number;
   current_count: number;

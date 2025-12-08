@@ -59,17 +59,18 @@ CREATE TABLE STORE (
 );
 
 -- Store Lottery Inventory Table
-CREATE TABLE store_lottery_inventory (
+CREATE TABLE STORE_LOTTERY_INVENTORY (
     id INT PRIMARY KEY AUTO_INCREMENT,
     store_id INT NOT NULL,
-    lottery_type_id INT NOT NULL,
+    lottery_id INT NOT NULL,
+    serial_number VARCHAR(32),
     total_count INT NOT NULL,
     current_count INT NOT NULL,
     status ENUM('inactive','active','finished') DEFAULT 'inactive',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY(store_id) REFERENCES STORE(store_id),
-    FOREIGN KEY(lottery_type_id) REFERENCES LOTTERY_MASTER(lottery_id)
+    FOREIGN KEY(store_id) REFERENCES STORES(store_id),
+    FOREIGN KEY(lottery_id) REFERENCES LOTTERY_MASTER(lottery_id)
 );
 
 -- Ticket Scan Log Table

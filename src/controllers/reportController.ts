@@ -132,7 +132,7 @@ export const getLotteryReport = async (req: AuthRequest, res: Response): Promise
         (sli.total_count - sli.current_count) * lm.price as revenue
       FROM STORE_LOTTERY_INVENTORY sli
       JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
-      WHERE sli.store_id = ? AND sli.lottery_type_id = ?`,
+      WHERE sli.store_id = ? AND sli.lottery_id = ?`,
       [storeId, lotteryTypeId]
     );
 
