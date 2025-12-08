@@ -399,7 +399,7 @@ export const deleteStoreOwnerAccount = async (
       );
 
       await connection.query(
-        `DELETE FROM scanned_tickets WHERE store_id IN (${storePlaceholders})`,
+        `DELETE FROM SCANNED_TICKETS WHERE store_id IN (${storePlaceholders})`,
         storeIds
       );
 
@@ -409,7 +409,7 @@ export const deleteStoreOwnerAccount = async (
       );
     }
 
-    await connection.query('DELETE FROM scanned_tickets WHERE scanned_by = ?', [user.id]);
+    await connection.query('DELETE FROM SCANNED_TICKETS WHERE scanned_by = ?', [user.id]);
 
     await connection.query('DELETE FROM STORE_OWNER WHERE owner_id = ?', [user.id]);
 

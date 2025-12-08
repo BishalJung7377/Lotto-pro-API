@@ -241,7 +241,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
 
     try {
       await pool.query(
-        `INSERT INTO scanned_tickets (store_id, barcode_data, lottery_type_id, ticket_number, scanned_by)
+        `INSERT INTO SCANNED_TICKETS (store_id, barcode_data, lottery_type_id, ticket_number, scanned_by)
          VALUES (?, ?, ?, ?, ?)`,
         [
           store_id,
@@ -317,7 +317,7 @@ export const getScanHistory = async (req: AuthRequest, res: Response): Promise<v
         lm.lottery_name as lottery_name,
         lm.price as lottery_price,
         u.full_name as scanned_by_name
-      FROM scanned_tickets st
+      FROM SCANNED_TICKETS st
       LEFT JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
       LEFT JOIN users u ON st.scanned_by = u.id
       WHERE st.store_id = ?

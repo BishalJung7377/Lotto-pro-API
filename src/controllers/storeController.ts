@@ -318,7 +318,7 @@ export const deleteStore = async (
     await pool.query('DELETE FROM STORE_LOTTERY_INVENTORY WHERE store_id = ?', [
       storeId,
     ]);
-    await pool.query('DELETE FROM scanned_tickets WHERE store_id = ?', [
+    await pool.query('DELETE FROM SCANNED_TICKETS WHERE store_id = ?', [
       storeId,
     ]);
 

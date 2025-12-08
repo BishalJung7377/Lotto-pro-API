@@ -63,7 +63,7 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
         lm.lottery_name as lottery_name,
         lm.price,
         st.ticket_number
-      FROM scanned_tickets st
+      FROM SCANNED_TICKETS st
       LEFT JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
       WHERE st.store_id = ?
       ORDER BY st.scanned_at DESC
@@ -77,7 +77,7 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
         DATE(scanned_at) as date,
         COUNT(*) as tickets_sold,
         SUM(lm.price) as daily_revenue
-      FROM scanned_tickets st
+      FROM SCANNED_TICKETS st
       LEFT JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
       WHERE st.store_id = ?
         AND scanned_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
@@ -206,7 +206,7 @@ export const getSalesAnalytics = async (req: AuthRequest, res: Response): Promis
         lm.price,
         COUNT(*) as tickets_sold,
         SUM(lm.price) as revenue
-      FROM scanned_tickets st
+      FROM SCANNED_TICKETS st
       JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
       WHERE st.store_id = ?
         AND st.scanned_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
@@ -220,7 +220,7 @@ export const getSalesAnalytics = async (req: AuthRequest, res: Response): Promis
       `SELECT
         HOUR(scanned_at) as hour,
         COUNT(*) as tickets_sold
-      FROM scanned_tickets
+      FROM SCANNED_TICKETS
       WHERE store_id = ?
         AND scanned_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
       GROUP BY hour
@@ -234,7 +234,7 @@ export const getSalesAnalytics = async (req: AuthRequest, res: Response): Promis
         DAYNAME(scanned_at) as day_name,
         DAYOFWEEK(scanned_at) as day_number,
         COUNT(*) as tickets_sold
-      FROM scanned_tickets
+      FROM SCANNED_TICKETS
       WHERE store_id = ?
         AND scanned_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
       GROUP BY day_name, day_number
