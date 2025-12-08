@@ -176,7 +176,8 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
       master.end_number,
       parsedScan.packNumber
     );
-    const inventoryStatus = soldCount >= totalTickets ? 'finished' : 'active';
+    const remainingCount = Math.max(totalTickets - soldCount, 0);
+    const inventoryStatus = remainingCount === 0 ? 'finished' : 'active';
 
     const [inventoryRows] = await pool.query(
       `SELECT * FROM STORE_LOTTERY_INVENTORY
@@ -196,7 +197,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
           master.lottery_id,
           parsedScan.ticketSerial,
           totalTickets,
-          soldCount,
+          remainingCount,
           inventoryStatus,
         ]
       );
@@ -217,7 +218,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
              status = ?,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [totalTickets, soldCount, inventoryStatus, inventory.id]
+        [totalTickets, remainingCount, inventoryStatus, inventory.id]
       );
 
       const [updatedInventory] = await pool.query(
@@ -266,10 +267,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
         serial_number: inventory.serial_number,
         total_count: inventory.total_count,
         current_count: inventory.current_count,
-        remaining_tickets: Math.max(
-          inventory.total_count - inventory.current_count,
-          0
-        ),
+        remaining_tickets: inventory.current_count,
         status: inventory.status,
         updated_at: inventory.updated_at,
       },
