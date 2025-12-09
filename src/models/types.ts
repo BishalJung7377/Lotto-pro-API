@@ -76,8 +76,11 @@ export interface ScannedTicket {
 
 // Request/Response types
 export interface LoginRequest {
-  email: string;
-  password: string;
+  identifier?: string;
+  email?: string;
+  password?: string;
+  lottery_ac_no?: string;
+  lottery_pw?: string;
 }
 
 export interface RegisterRequest {
@@ -110,11 +113,6 @@ export interface ScanTicketRequest {
   pack_number?: number;
 }
 
-export interface StoreLoginRequest {
-  lottery_ac_no: string;
-  lottery_pw: string;
-}
-
 export interface DecodedBarcodeData {
   lottery_number?: string;
   ticket_serial?: string;
@@ -123,7 +121,6 @@ export interface DecodedBarcodeData {
   raw: string;
   error?: string;
 }
-
 export interface StoreLoginRequest {
   lottery_ac_no: string;
   lottery_pw: string;

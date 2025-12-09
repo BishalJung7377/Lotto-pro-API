@@ -80,30 +80,125 @@ const isSuperAdminEmail = (email: string): boolean => {
     : normalized.endsWith(`@${SUPER_ADMIN_DOMAIN}`);
 };
 
+const STORE_ACCOUNT_NUMBER_REGEX = /^\d{8}$/;
+const STORE_PIN_REGEX = /^\d{4}$/;
+
+const handleStoreAccountLogin = async (
+  res: Response,
+  lotteryAccountInput?: string,
+  lotteryPinInput?: string
+): Promise<void> => {
+  const lottery_ac_no = lotteryAccountInput?.trim();
+  const lottery_pw = lotteryPinInput?.trim();
+
+  if (!lottery_ac_no || !lottery_pw) {
+    res
+      .status(400)
+      .json({ error: 'Lottery account number and password are required' });
+    return;
+  }
+
+  if (!STORE_ACCOUNT_NUMBER_REGEX.test(lottery_ac_no)) {
+    res.status(400).json({ error: 'Lottery account number must be 8 digits' });
+    return;
+  }
+
+  if (!STORE_PIN_REGEX.test(lottery_pw)) {
+    res.status(400).json({ error: 'Lottery password must be 4 digits' });
+    return;
+  }
+
+  const [stores] = await pool.query(
+    `SELECT
+      store_id,
+      owner_id,
+      store_name,
+      address,
+      city,
+      state,
+      zipcode,
+      lottery_ac_no,
+      lottery_pw,
+      created_at
+     FROM STORES
+     WHERE lottery_ac_no = ?`,
+    [lottery_ac_no]
+  );
+
+  if ((stores as any[]).length === 0) {
+    res.status(401).json({ error: 'Invalid lottery credentials' });
+    return;
+  }
+
+  const store = (stores as any[])[0];
+  const isValidPassword = await comparePassword(lottery_pw, store.lottery_pw);
+
+  if (!isValidPassword) {
+    res.status(401).json({ error: 'Invalid lottery credentials' });
+    return;
+  }
+
+  const token = generateToken({
+    id: store.store_id,
+    email: `${store.lottery_ac_no}@store.lotto`,
+    full_name: store.store_name,
+    role: 'store_account',
+  });
+
+  res.status(200).json({
+    store: {
+      id: store.store_id,
+      owner_id: store.owner_id,
+      store_name: store.store_name,
+      address: store.address,
+      city: store.city,
+      state: store.state,
+      zipcode: store.zipcode,
+      lottery_ac_no: store.lottery_ac_no,
+      created_at: store.created_at,
+    },
+    token,
+    redirectTo: `/api/lottery/store/${store.store_id}/inventory`,
+    message: 'Store account login successful',
+  });
+};
+
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
+      identifier,
       email,
       password,
       lottery_ac_no,
       lottery_pw,
-    }: LoginRequest & Partial<StoreLoginRequest> = req.body;
+    }: LoginRequest = req.body;
 
-    if (lottery_ac_no && lottery_pw) {
-      await storeAccountLogin(req, res);
+    const loginIdentifier = (
+      identifier ??
+      email ??
+      lottery_ac_no ??
+      ''
+    )
+      .toString()
+      .trim();
+    const loginPassword = (password ?? lottery_pw ?? '').toString().trim();
+
+    if (!loginIdentifier || !loginPassword) {
+      res
+        .status(400)
+        .json({ error: 'Account identifier and password are required' });
       return;
     }
 
-    // Validate input
-    if (!email || !password) {
-      res.status(400).json({ error: 'Email and password are required' });
+    if (STORE_ACCOUNT_NUMBER_REGEX.test(loginIdentifier)) {
+      await handleStoreAccountLogin(res, loginIdentifier, loginPassword);
       return;
     }
 
-    if (isSuperAdminEmail(email)) {
+    if (isSuperAdminEmail(loginIdentifier)) {
       const [admins] = await pool.query(
         'SELECT * FROM SUPER_ADMIN WHERE email = ?',
-        [email]
+        [loginIdentifier]
       );
 
       if ((admins as SuperAdmin[]).length === 0) {
@@ -112,7 +207,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       }
 
       const admin = (admins as SuperAdmin[])[0];
-      const isValidPassword = await comparePassword(password, admin.password);
+      const isValidPassword = await comparePassword(
+        loginPassword,
+        admin.password
+      );
 
       if (!isValidPassword) {
         res.status(401).json({ error: 'Invalid email or password' });
@@ -143,7 +241,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     // Find store owner
     const [result] = await pool.query(
       'SELECT * FROM STORE_OWNER WHERE email = ?',
-      [email]
+      [loginIdentifier]
     );
     if ((result as any[]).length === 0) {
       res.status(401).json({ error: 'Invalid email or password' });
@@ -154,7 +252,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
     // Verify password
     const isValidPassword = await comparePassword(
-      password,
+      loginPassword,
       storeOwner.password
     );
     if (!isValidPassword) {
@@ -205,71 +303,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 export const storeAccountLogin = async (req: Request, res: Response): Promise<void> => {
   try {
     const { lottery_ac_no, lottery_pw }: StoreLoginRequest = req.body;
-
-    if (!lottery_ac_no || !lottery_pw) {
-      res
-        .status(400)
-        .json({ error: 'Lottery account number and password are required' });
-      return;
-    }
-
-    if (!/^\d{8}$/.test(lottery_ac_no)) {
-      res.status(400).json({ error: 'Lottery account number must be 8 digits' });
-      return;
-    }
-
-    if (!/^\d{4}$/.test(lottery_pw)) {
-      res.status(400).json({ error: 'Lottery password must be 4 digits' });
-      return;
-    }
-
-    const [stores] = await pool.query(
-      'SELECT * FROM STORES WHERE lottery_ac_no = ?',
-      [lottery_ac_no]
-    );
-
-    if ((stores as any[]).length === 0) {
-      res.status(401).json({ error: 'Invalid lottery credentials' });
-      return;
-    }
-
-    const store = (stores as any[])[0];
-
-    const isValidPassword = await comparePassword(
-      lottery_pw,
-      store.lottery_pw
-    );
-
-    if (!isValidPassword) {
-      res.status(401).json({ error: 'Invalid lottery credentials' });
-      return;
-    }
-
-    const token = generateToken({
-      id: store.store_id,
-      email: `${store.lottery_ac_no}@store.lotto`,
-      full_name: store.store_name,
-      role: 'store_account',
-    });
-
-    res.status(200).json({
-      store: {
-        id: store.store_id,
-        owner_id: store.owner_id,
-        store_name: store.store_name,
-        address: store.address,
-        city: store.city,
-        state: store.state,
-        zipcode: store.zipcode,
-        lottery_ac_no: store.lottery_ac_no,
-        created_at: store.created_at,
-      },
-      token,
-      message: 'Store account login successful',
-    });
+    await handleStoreAccountLogin(res, lottery_ac_no, lottery_pw);
   } catch (error) {
     console.error('Store account login error:', error);
-    res.status(500).json({ error: 'Server error during store login' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Server error during store login' });
+    }
   }
 };
 

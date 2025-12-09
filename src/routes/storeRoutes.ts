@@ -6,7 +6,7 @@ import {
   updateStore,
   deleteStore,
 } from '../controllers/storeController';
-import { storeAccountLogin } from '../controllers/storeAccountController';
+import { storeAccountLogin } from '../controllers/authController';
 import { authMiddleware } from '../middleware/auth';
 import { asyncHandler } from '../utils/asyncHandler';
 
