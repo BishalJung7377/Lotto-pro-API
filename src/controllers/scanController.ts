@@ -140,6 +140,31 @@ const calculateUnsoldCount = (
   return remaining;
 };
 
+const normalizeDigits = (value: string): string => value.replace(/\D/g, '');
+
+const buildBookDigitsPrefix = (
+  payload: ParsedScanPayload
+): string | null => {
+  const baseDigits = normalizeDigits(payload.raw);
+  const expectedLength =
+    (payload.lotteryNumber?.length || 0) +
+    (payload.ticketSerial?.length || 0);
+
+  if (expectedLength === 0) {
+    return baseDigits || null;
+  }
+
+  if (baseDigits.length >= expectedLength) {
+    return baseDigits.substring(0, expectedLength);
+  }
+
+  const fallback = normalizeDigits(
+    `${payload.lotteryNumber ?? ''}${payload.ticketSerial ?? ''}`
+  );
+
+  return fallback || baseDigits || null;
+};
+
 const deriveTicketNumberFromRemaining = (
   startNumber: number,
   endNumber: number,
@@ -416,7 +441,10 @@ export const scanTicket = async (
       throw new Error('Failed to load inventory record');
     }
 
-    const salesIncrement = ticketsSoldThisScan * saleAmountPerTicket;
+    const resolvedDirection: DirectionValue =
+      inventory.direction === 'asc' || inventory.direction === 'desc'
+        ? (inventory.direction as DirectionValue)
+        : directionInput || 'asc';
 
     const scannedBy = req.user?.id ?? null;
     let scanLogId: number | null = null;
@@ -439,6 +467,41 @@ export const scanTicket = async (
     }
 
     if (scanLogId) {
+      let dailyTicketsSold = ticketsSoldThisScan;
+
+      try {
+        const bookDigitsPrefix = buildBookDigitsPrefix(parsedScan);
+        if (bookDigitsPrefix) {
+          const prefixLength = bookDigitsPrefix.length;
+          const [dayRangeRows] = await pool.query(
+            `SELECT
+               MIN(ticket_number) as first_ticket,
+               MAX(ticket_number) as last_ticket
+             FROM SCANNED_TICKETS
+             WHERE store_id = ?
+               AND lottery_type_id = ?
+               AND DATE(scanned_at) = CURDATE()
+               AND LEFT(REPLACE(REPLACE(barcode_data, '-', ''), ' ', ''), ?) = ?`,
+            [store_id, master.lottery_id, prefixLength, bookDigitsPrefix]
+          );
+
+          const dayRange = (dayRangeRows as any[])[0];
+          const firstTicket = Number(dayRange?.first_ticket);
+          const lastTicket = Number(dayRange?.last_ticket);
+
+          if (!isNaN(firstTicket) && !isNaN(lastTicket)) {
+            dailyTicketsSold =
+              resolvedDirection === 'asc'
+                ? Math.max(0, lastTicket - firstTicket)
+                : Math.max(0, firstTicket - lastTicket);
+          }
+        }
+      } catch (rangeError) {
+        console.warn('Failed to compute daily ticket range:', rangeError);
+      }
+
+      const dailySales = dailyTicketsSold * saleAmountPerTicket;
+
       try {
         await pool.query(
           `INSERT INTO DAILY_REPORT
@@ -446,16 +509,16 @@ export const scanTicket = async (
            VALUES (?, ?, ?, ?, CURDATE(), ?, ?)
            ON DUPLICATE KEY UPDATE
              scan_id = VALUES(scan_id),
-             tickets_sold = tickets_sold + VALUES(tickets_sold),
-             total_sales = total_sales + VALUES(total_sales),
+             tickets_sold = VALUES(tickets_sold),
+             total_sales = VALUES(total_sales),
              updated_at = CURRENT_TIMESTAMP`,
           [
             store_id,
             master.lottery_id,
             inventory.id,
             scanLogId,
-            ticketsSoldThisScan,
-            salesIncrement,
+            dailyTicketsSold,
+            dailySales,
           ]
         );
       } catch (reportError) {
