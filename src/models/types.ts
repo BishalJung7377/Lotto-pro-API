@@ -52,15 +52,6 @@ export interface StoreLotteryInventory {
   updated_at: Date;
 }
 
-export interface TicketScanLog {
-  scan_id: number;
-  book_id: number;
-  store_id: number;
-  lottery_id: number;
-  ticket_number: number;
-  scan_date: Date;
-}
-
 export interface DailyReport {
   report_id: number;
   store_id: number;

@@ -329,34 +329,11 @@ export const scanTicket = async (
       inventory = (updatedInventory as any[])[0];
     }
 
-    try {
-      const [ticketLogResult] = await pool.query(
-        `INSERT INTO TICKET_SCAN_LOG (book_id, store_id, lottery_id, ticket_number)
-         VALUES (?, ?, ?, ?)`,
-        [inventory.id, store_id, master.lottery_id, currentTicketNumber]
-      );
-      const scanLogId = (ticketLogResult as any).insertId;
-      const saleAmount = Number(master.price) || 0;
-
-      await pool.query(
-        `INSERT INTO DAILY_REPORT
-          (store_id, lottery_id, book_id, scan_id, report_date, tickets_sold, total_sales)
-         VALUES (?, ?, ?, ?, CURDATE(), 1, ?)
-         ON DUPLICATE KEY UPDATE
-           scan_id = VALUES(scan_id),
-           tickets_sold = tickets_sold + 1,
-           total_sales = total_sales + VALUES(total_sales),
-           updated_at = CURRENT_TIMESTAMP`,
-        [store_id, master.lottery_id, inventory.id, scanLogId, saleAmount]
-      );
-    } catch (logError) {
-      console.warn('Failed to persist ticket scan log/report:', logError);
-    }
-
     const scannedBy = req.user?.role === 'store_owner' ? req.user?.id : null;
+    let scanLogId: number | null = null;
 
     try {
-      await pool.query(
+      const [scanResult] = await pool.query(
         `INSERT INTO SCANNED_TICKETS (store_id, barcode_data, lottery_type_id, ticket_number, scanned_by)
          VALUES (?, ?, ?, ?, ?)`,
         [
@@ -367,8 +344,28 @@ export const scanTicket = async (
           scannedBy,
         ]
       );
+      scanLogId = (scanResult as any).insertId;
     } catch (logError) {
       console.warn('Failed to log scan event:', logError);
+    }
+
+    if (scanLogId) {
+      try {
+        const saleAmount = Number(master.price) || 0;
+        await pool.query(
+          `INSERT INTO DAILY_REPORT
+            (store_id, lottery_id, book_id, scan_id, report_date, tickets_sold, total_sales)
+           VALUES (?, ?, ?, ?, CURDATE(), 1, ?)
+           ON DUPLICATE KEY UPDATE
+             scan_id = VALUES(scan_id),
+             tickets_sold = tickets_sold + 1,
+             total_sales = total_sales + VALUES(total_sales),
+             updated_at = CURRENT_TIMESTAMP`,
+          [store_id, master.lottery_id, inventory.id, scanLogId, saleAmount]
+        );
+      } catch (reportError) {
+        console.warn('Failed to persist daily report entry:', reportError);
+      }
     }
 
     const remainingTickets = Math.max(inventory.current_count, 0);

@@ -331,26 +331,24 @@ export const getTicketScanLogs = async (req: AuthRequest, res: Response): Promis
 
     let query = `
       SELECT
-        log.scan_id,
-        log.ticket_number,
-        log.scan_date,
-        log.book_id,
+        st.id as scan_id,
+        st.ticket_number,
+        st.scanned_at as scan_date,
+        st.barcode_data,
         lm.lottery_name,
         lm.lottery_number,
-        lm.price,
-        sli.serial_number
-      FROM TICKET_SCAN_LOG log
-      JOIN STORE_LOTTERY_INVENTORY sli ON log.book_id = sli.id
-      JOIN LOTTERY_MASTER lm ON log.lottery_id = lm.lottery_id
-      WHERE log.store_id = ?`;
+        lm.price
+      FROM SCANNED_TICKETS st
+      JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
+      WHERE st.store_id = ?`;
     const params: Array<number | string> = [storeId];
 
     if (dateFilter) {
-      query += ' AND DATE(log.scan_date) = ?';
+      query += ' AND DATE(st.scanned_at) = ?';
       params.push(dateFilter);
     }
 
-    query += ' ORDER BY log.scan_date DESC LIMIT ?';
+    query += ' ORDER BY st.scanned_at DESC LIMIT ?';
     params.push(limit);
 
     const [rows] = await pool.query(query, params);
