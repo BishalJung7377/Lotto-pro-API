@@ -2,23 +2,28 @@ import { Response } from 'express';
 import { pool } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 
+const ensureStoreOwnership = async (
+  storeId: number,
+  ownerId?: number
+): Promise<any> => {
+  const [storeRows] = await pool.query(
+    'SELECT * FROM STORES WHERE store_id = ? AND owner_id = ?',
+    [storeId, ownerId]
+  );
+
+  if ((storeRows as any[]).length === 0) {
+    throw new Error('STORE_NOT_FOUND');
+  }
+
+  return (storeRows as any[])[0];
+};
+
 export const getStoreReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.user?.id;
     const storeId = parseInt(req.params.storeId);
 
-    // Verify store ownership
-    const [storeCheck] = await pool.query(
-      'SELECT * FROM STORES WHERE store_id = ? AND owner_id = ?',
-      [storeId, userId]
-    );
-
-    if ((storeCheck as any[]).length === 0) {
-      res.status(404).json({ error: 'Store not found' });
-      return;
-    }
-
-    const store = (storeCheck as any[])[0];
+    const store = await ensureStoreOwnership(storeId, userId);
 
     // Get inventory summary
     const [inventorySummary] = await pool.query(
@@ -97,6 +102,10 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
       salesByDate,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'STORE_NOT_FOUND') {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
     console.error('Get store report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
@@ -108,16 +117,7 @@ export const getLotteryReport = async (req: AuthRequest, res: Response): Promise
     const storeId = parseInt(req.params.storeId);
     const lotteryTypeId = parseInt(req.params.lotteryTypeId);
 
-    // Verify store ownership
-    const [storeCheck] = await pool.query(
-      'SELECT * FROM STORES WHERE store_id = ? AND owner_id = ?',
-      [storeId, userId]
-    );
-
-    if ((storeCheck as any[]).length === 0) {
-      res.status(404).json({ error: 'Store not found' });
-      return;
-    }
+    await ensureStoreOwnership(storeId, userId);
 
     // Get lottery details
     const [lotteryResult] = await pool.query(
@@ -177,6 +177,10 @@ export const getLotteryReport = async (req: AuthRequest, res: Response): Promise
       },
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'STORE_NOT_FOUND') {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
     console.error('Get lottery report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
@@ -188,16 +192,7 @@ export const getSalesAnalytics = async (req: AuthRequest, res: Response): Promis
     const storeId = parseInt(req.params.storeId);
     const days = parseInt(req.query.days as string) || 30;
 
-    // Verify store ownership
-    const [storeCheck] = await pool.query(
-      'SELECT * FROM STORES WHERE store_id = ? AND owner_id = ?',
-      [storeId, userId]
-    );
-
-    if ((storeCheck as any[]).length === 0) {
-      res.status(404).json({ error: 'Store not found' });
-      return;
-    }
+    await ensureStoreOwnership(storeId, userId);
 
     // Sales by lottery type
     const [salesByType] = await pool.query(
@@ -249,7 +244,141 @@ export const getSalesAnalytics = async (req: AuthRequest, res: Response): Promis
       salesByDayOfWeek,
     });
   } catch (error) {
+    if (error instanceof Error && error.message === 'STORE_NOT_FOUND') {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
     console.error('Get sales analytics error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const getDailySalesReport = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    const storeId = parseInt(req.params.storeId);
+    const dateParam = (req.query.date as string) || new Date().toISOString().slice(0, 10);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+      return;
+    }
+
+    await ensureStoreOwnership(storeId, userId);
+
+    const [breakdown] = await pool.query(
+      `SELECT
+        st.lottery_type_id as lottery_id,
+        lm.lottery_name,
+        lm.lottery_number,
+        COUNT(*) as tickets_sold,
+        SUM(lm.price) as revenue
+      FROM SCANNED_TICKETS st
+      JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
+      WHERE st.store_id = ?
+        AND DATE(st.scanned_at) = ?
+      GROUP BY st.lottery_type_id, lm.lottery_name, lm.lottery_number
+      ORDER BY tickets_sold DESC`,
+      [storeId, dateParam]
+    );
+
+    const totals = (breakdown as any[]).reduce(
+      (acc, row) => {
+        acc.tickets += Number(row.tickets_sold) || 0;
+        acc.revenue += Number(row.revenue) || 0;
+        return acc;
+      },
+      { tickets: 0, revenue: 0 }
+    );
+
+    res.status(200).json({
+      store_id: storeId,
+      date: dateParam,
+      total_tickets_sold: totals.tickets,
+      total_revenue: totals.revenue,
+      breakdown,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'STORE_NOT_FOUND') {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
+    console.error('Get daily sales report error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+export const getMonthlySalesReport = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.user?.id;
+    const storeId = parseInt(req.params.storeId);
+    const monthParam =
+      (req.query.month as string) || new Date().toISOString().slice(0, 7);
+
+    if (!/^\d{4}-\d{2}$/.test(monthParam)) {
+      res.status(400).json({ error: 'Invalid month format. Use YYYY-MM' });
+      return;
+    }
+
+    await ensureStoreOwnership(storeId, userId);
+
+    const monthStart = `${monthParam}-01`;
+
+    const [dailyTotals] = await pool.query(
+      `SELECT
+        DATE(st.scanned_at) as date,
+        COUNT(*) as tickets_sold,
+        SUM(lm.price) as revenue
+      FROM SCANNED_TICKETS st
+      JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
+      WHERE st.store_id = ?
+        AND st.scanned_at >= ?
+        AND st.scanned_at < DATE_ADD(?, INTERVAL 1 MONTH)
+      GROUP BY DATE(st.scanned_at)
+      ORDER BY date`,
+      [storeId, monthStart, monthStart]
+    );
+
+    const [lotteryTotals] = await pool.query(
+      `SELECT
+        st.lottery_type_id as lottery_id,
+        lm.lottery_name,
+        lm.lottery_number,
+        COUNT(*) as tickets_sold,
+        SUM(lm.price) as revenue
+      FROM SCANNED_TICKETS st
+      JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
+      WHERE st.store_id = ?
+        AND st.scanned_at >= ?
+        AND st.scanned_at < DATE_ADD(?, INTERVAL 1 MONTH)
+      GROUP BY st.lottery_type_id, lm.lottery_name, lm.lottery_number
+      ORDER BY tickets_sold DESC`,
+      [storeId, monthStart, monthStart]
+    );
+
+    const totals = (lotteryTotals as any[]).reduce(
+      (acc, row) => {
+        acc.tickets += Number(row.tickets_sold) || 0;
+        acc.revenue += Number(row.revenue) || 0;
+        return acc;
+      },
+      { tickets: 0, revenue: 0 }
+    );
+
+    res.status(200).json({
+      store_id: storeId,
+      month: monthParam,
+      total_tickets_sold: totals.tickets,
+      total_revenue: totals.revenue,
+      daily_totals: dailyTotals,
+      lottery_totals: lotteryTotals,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'STORE_NOT_FOUND') {
+      res.status(404).json({ error: 'Store not found' });
+      return;
+    }
+    console.error('Get monthly sales report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

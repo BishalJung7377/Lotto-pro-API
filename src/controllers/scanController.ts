@@ -65,8 +65,7 @@ const parseScanInput = (payload: ScanTicketRequest): ParsedScanPayload => {
     return parsedPayload;
   }
 
-  const directTicketNumber =
-    payload.pack_number ?? payload.ticket_number;
+  const directTicketNumber = payload.pack_number ?? payload.ticket_number;
 
   if (
     payload.lottery_number &&
@@ -92,7 +91,10 @@ const parseScanInput = (payload: ScanTicketRequest): ParsedScanPayload => {
   );
 };
 
-const calculateTotalTickets = (startNumber: number, endNumber: number): number => {
+const calculateTotalTickets = (
+  startNumber: number,
+  endNumber: number
+): number => {
   return Math.abs(endNumber - startNumber) + 1;
 };
 
@@ -126,14 +128,10 @@ const calculateUnsoldCount = (
 
   if (ascendingGame) {
     remaining =
-      direction === 'asc'
-        ? endNumber - ticket + 1
-        : ticket - startNumber + 1;
+      direction === 'asc' ? endNumber - ticket + 1 : ticket - startNumber + 1;
   } else {
     remaining =
-      direction === 'asc'
-        ? ticket - endNumber + 1
-        : startNumber - ticket + 1;
+      direction === 'asc' ? ticket - endNumber + 1 : startNumber - ticket + 1;
   }
 
   if (remaining < 0) remaining = 0;
@@ -151,7 +149,10 @@ const resolveStatus = (
   return 'active';
 };
 
-export const scanTicket = async (req: AuthRequest, res: Response): Promise<void> => {
+export const scanTicket = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const { store_id }: ScanTicketRequest = req.body;
 
@@ -233,7 +234,9 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
       if (!directionInput) {
         res
           .status(400)
-          .json({ error: 'Direction is required for the first scan of a book' });
+          .json({
+            error: 'Direction is required for the first scan of a book',
+          });
         return;
       }
 
@@ -310,7 +313,13 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
              direction = ?,
              updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-        [totalTickets, unsoldCount, inventoryStatus, directionToUse, inventory.id]
+        [
+          totalTickets,
+          unsoldCount,
+          inventoryStatus,
+          directionToUse,
+          inventory.id,
+        ]
       );
 
       const [updatedInventory] = await pool.query(
@@ -320,8 +329,7 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
       inventory = (updatedInventory as any[])[0];
     }
 
-    const scannedBy =
-      req.user?.role === 'store_owner' ? req.user?.id : null;
+    const scannedBy = req.user?.role === 'store_owner' ? req.user?.id : null;
 
     try {
       await pool.query(
@@ -380,7 +388,10 @@ export const scanTicket = async (req: AuthRequest, res: Response): Promise<void>
   }
 };
 
-export const getScanHistory = async (req: AuthRequest, res: Response): Promise<void> => {
+export const getScanHistory = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
     const storeId = parseInt(req.params.storeId);
     const limit = parseInt(req.query.limit as string) || 50;
