@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { pool } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
+import { authorizeStoreAccess, StoreAccessError } from '../utils/storeAccess';
 
 const ensureStoreOwnership = async (
   storeId: number,
@@ -255,7 +256,6 @@ export const getSalesAnalytics = async (req: AuthRequest, res: Response): Promis
 
 export const getDailySalesReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.id;
     const storeId = parseInt(req.params.storeId);
     const dateParam = (req.query.date as string) || new Date().toISOString().slice(0, 10);
 
@@ -264,28 +264,33 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    await ensureStoreOwnership(storeId, userId);
+    await authorizeStoreAccess(storeId, req.user);
 
-    const [breakdown] = await pool.query(
+    const [reports] = await pool.query(
       `SELECT
-        st.lottery_type_id as lottery_id,
+        dr.report_id,
+        dr.lottery_id,
+        dr.book_id,
+        dr.scan_id,
+        dr.report_date,
+        dr.tickets_sold,
+        dr.total_sales,
         lm.lottery_name,
         lm.lottery_number,
-        COUNT(*) as tickets_sold,
-        SUM(lm.price) as revenue
-      FROM SCANNED_TICKETS st
-      JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
-      WHERE st.store_id = ?
-        AND DATE(st.scanned_at) = ?
-      GROUP BY st.lottery_type_id, lm.lottery_name, lm.lottery_number
-      ORDER BY tickets_sold DESC`,
+        sli.serial_number
+      FROM DAILY_REPORT dr
+      JOIN LOTTERY_MASTER lm ON dr.lottery_id = lm.lottery_id
+      JOIN STORE_LOTTERY_INVENTORY sli ON dr.book_id = sli.id
+      WHERE dr.store_id = ?
+        AND dr.report_date = ?
+      ORDER BY lm.lottery_name`,
       [storeId, dateParam]
     );
 
-    const totals = (breakdown as any[]).reduce(
+    const totals = (reports as any[]).reduce(
       (acc, row) => {
         acc.tickets += Number(row.tickets_sold) || 0;
-        acc.revenue += Number(row.revenue) || 0;
+        acc.revenue += Number(row.total_sales) || 0;
         return acc;
       },
       { tickets: 0, revenue: 0 }
@@ -296,11 +301,11 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
       date: dateParam,
       total_tickets_sold: totals.tickets,
       total_revenue: totals.revenue,
-      breakdown,
+      breakdown: reports,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === 'STORE_NOT_FOUND') {
-      res.status(404).json({ error: 'Store not found' });
+    if (error instanceof StoreAccessError) {
+      res.status(error.status).json({ error: error.message });
       return;
     }
     console.error('Get daily sales report error:', error);
@@ -308,9 +313,61 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
   }
 };
 
+export const getTicketScanLogs = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const storeId = parseInt(req.params.storeId);
+    const dateFilter = req.query.date as string | undefined;
+    const limit = Math.min(
+      Math.max(parseInt((req.query.limit as string) || '100', 10) || 100, 1),
+      500
+    );
+
+    if (dateFilter && !/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) {
+      res.status(400).json({ error: 'Invalid date format. Use YYYY-MM-DD' });
+      return;
+    }
+
+    await authorizeStoreAccess(storeId, req.user);
+
+    let query = `
+      SELECT
+        log.scan_id,
+        log.ticket_number,
+        log.scan_date,
+        log.book_id,
+        lm.lottery_name,
+        lm.lottery_number,
+        lm.price,
+        sli.serial_number
+      FROM TICKET_SCAN_LOG log
+      JOIN STORE_LOTTERY_INVENTORY sli ON log.book_id = sli.id
+      JOIN LOTTERY_MASTER lm ON log.lottery_id = lm.lottery_id
+      WHERE log.store_id = ?`;
+    const params: Array<number | string> = [storeId];
+
+    if (dateFilter) {
+      query += ' AND DATE(log.scan_date) = ?';
+      params.push(dateFilter);
+    }
+
+    query += ' ORDER BY log.scan_date DESC LIMIT ?';
+    params.push(limit);
+
+    const [rows] = await pool.query(query, params);
+
+    res.status(200).json({ scan_logs: rows });
+  } catch (error) {
+    if (error instanceof StoreAccessError) {
+      res.status(error.status).json({ error: error.message });
+      return;
+    }
+    console.error('Get ticket scan logs error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
 export const getMonthlySalesReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const userId = req.user?.id;
     const storeId = parseInt(req.params.storeId);
     const monthParam =
       (req.query.month as string) || new Date().toISOString().slice(0, 7);
@@ -320,39 +377,38 @@ export const getMonthlySalesReport = async (req: AuthRequest, res: Response): Pr
       return;
     }
 
-    await ensureStoreOwnership(storeId, userId);
+    await authorizeStoreAccess(storeId, req.user);
 
     const monthStart = `${monthParam}-01`;
 
     const [dailyTotals] = await pool.query(
       `SELECT
-        DATE(st.scanned_at) as date,
-        COUNT(*) as tickets_sold,
-        SUM(lm.price) as revenue
-      FROM SCANNED_TICKETS st
-      JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
-      WHERE st.store_id = ?
-        AND st.scanned_at >= ?
-        AND st.scanned_at < DATE_ADD(?, INTERVAL 1 MONTH)
-      GROUP BY DATE(st.scanned_at)
-      ORDER BY date`,
+        dr.report_date,
+        SUM(dr.tickets_sold) as tickets_sold,
+        SUM(dr.total_sales) as revenue
+      FROM DAILY_REPORT dr
+      WHERE dr.store_id = ?
+        AND dr.report_date >= ?
+        AND dr.report_date < DATE_ADD(?, INTERVAL 1 MONTH)
+      GROUP BY dr.report_date
+      ORDER BY dr.report_date`,
       [storeId, monthStart, monthStart]
     );
 
     const [lotteryTotals] = await pool.query(
       `SELECT
-        st.lottery_type_id as lottery_id,
+        dr.lottery_id,
         lm.lottery_name,
         lm.lottery_number,
-        COUNT(*) as tickets_sold,
-        SUM(lm.price) as revenue
-      FROM SCANNED_TICKETS st
-      JOIN LOTTERY_MASTER lm ON st.lottery_type_id = lm.lottery_id
-      WHERE st.store_id = ?
-        AND st.scanned_at >= ?
-        AND st.scanned_at < DATE_ADD(?, INTERVAL 1 MONTH)
-      GROUP BY st.lottery_type_id, lm.lottery_name, lm.lottery_number
-      ORDER BY tickets_sold DESC`,
+        SUM(dr.tickets_sold) as tickets_sold,
+        SUM(dr.total_sales) as revenue
+      FROM DAILY_REPORT dr
+      JOIN LOTTERY_MASTER lm ON dr.lottery_id = lm.lottery_id
+      WHERE dr.store_id = ?
+        AND dr.report_date >= ?
+        AND dr.report_date < DATE_ADD(?, INTERVAL 1 MONTH)
+      GROUP BY dr.lottery_id, lm.lottery_name, lm.lottery_number
+      ORDER BY revenue DESC`,
       [storeId, monthStart, monthStart]
     );
 
@@ -374,8 +430,8 @@ export const getMonthlySalesReport = async (req: AuthRequest, res: Response): Pr
       lottery_totals: lotteryTotals,
     });
   } catch (error) {
-    if (error instanceof Error && error.message === 'STORE_NOT_FOUND') {
-      res.status(404).json({ error: 'Store not found' });
+    if (error instanceof StoreAccessError) {
+      res.status(error.status).json({ error: error.message });
       return;
     }
     console.error('Get monthly sales report error:', error);

@@ -52,6 +52,28 @@ export interface StoreLotteryInventory {
   updated_at: Date;
 }
 
+export interface TicketScanLog {
+  scan_id: number;
+  book_id: number;
+  store_id: number;
+  lottery_id: number;
+  ticket_number: number;
+  scan_date: Date;
+}
+
+export interface DailyReport {
+  report_id: number;
+  store_id: number;
+  lottery_id: number;
+  book_id: number;
+  scan_id: number;
+  report_date: string;
+  tickets_sold: number;
+  total_sales: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
 export interface Ticket {
   id: number;
   inventory_id: number;

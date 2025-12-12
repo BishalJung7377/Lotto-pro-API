@@ -78,31 +78,32 @@ CREATE TABLE STORE_LOTTERY_INVENTORY (
 CREATE TABLE TICKET_SCAN_LOG (
     scan_id INT PRIMARY KEY AUTO_INCREMENT,
     book_id INT NOT NULL,
+    store_id INT NOT NULL,
+    lottery_id INT NOT NULL,
     ticket_number INT NOT NULL,
     scan_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    clerk_name VARCHAR(100),
-    remarks VARCHAR(255),
-    FOREIGN KEY(book_id) REFERENCES store_lottery_inventory(id)
+    FOREIGN KEY(book_id) REFERENCES STORE_LOTTERY_INVENTORY(id),
+    FOREIGN KEY(store_id) REFERENCES STORES(store_id),
+    FOREIGN KEY(lottery_id) REFERENCES LOTTERY_MASTER(lottery_id)
 );
 
 -- Daily Report Table
 CREATE TABLE DAILY_REPORT (
     report_id INT PRIMARY KEY AUTO_INCREMENT,
     store_id INT NOT NULL,
-    owner_id INT NOT NULL,
     lottery_id INT NOT NULL,
     book_id INT NOT NULL,
-    date DATE NOT NULL,
-    tickets_sold INT NOT NULL,
-    remaining_tickets INT NOT NULL,
-    start_ticket_number INT NOT NULL,
-    closing_ticket_number INT NOT NULL,
-    total_sales DECIMAL(10,2) NOT NULL,
-    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(store_id) REFERENCES STORE(store_id),
-    FOREIGN KEY(owner_id) REFERENCES STORE_OWNER(owner_id),
+    scan_id INT NOT NULL,
+    report_date DATE NOT NULL,
+    tickets_sold INT NOT NULL DEFAULT 0,
+    total_sales DECIMAL(10,2) NOT NULL DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_daily_report (store_id, lottery_id, book_id, report_date),
+    FOREIGN KEY(store_id) REFERENCES STORES(store_id),
     FOREIGN KEY(lottery_id) REFERENCES LOTTERY_MASTER(lottery_id),
-    FOREIGN KEY(book_id) REFERENCES store_lottery_inventory(id)
+    FOREIGN KEY(book_id) REFERENCES STORE_LOTTERY_INVENTORY(id),
+    FOREIGN KEY(scan_id) REFERENCES TICKET_SCAN_LOG(scan_id)
 );
 
 -- Owner Report View

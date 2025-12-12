@@ -5,18 +5,17 @@ import {
   getSalesAnalytics,
   getDailySalesReport,
   getMonthlySalesReport,
+  getTicketScanLogs,
 } from '../controllers/reportController';
-import { authMiddleware } from '../middleware/auth';
+import { authMiddleware, storeAccessAuthMiddleware } from '../middleware/auth';
 
 const router = Router();
 
-// All report routes require authentication
-router.use(authMiddleware);
-
-router.get('/store/:storeId', getStoreReport);
-router.get('/store/:storeId/lottery/:lotteryTypeId', getLotteryReport);
-router.get('/store/:storeId/analytics', getSalesAnalytics);
-router.get('/store/:storeId/daily', getDailySalesReport);
-router.get('/store/:storeId/monthly', getMonthlySalesReport);
+router.get('/store/:storeId', authMiddleware, getStoreReport);
+router.get('/store/:storeId/lottery/:lotteryTypeId', authMiddleware, getLotteryReport);
+router.get('/store/:storeId/analytics', authMiddleware, getSalesAnalytics);
+router.get('/store/:storeId/daily', storeAccessAuthMiddleware, getDailySalesReport);
+router.get('/store/:storeId/monthly', storeAccessAuthMiddleware, getMonthlySalesReport);
+router.get('/store/:storeId/scan-logs', storeAccessAuthMiddleware, getTicketScanLogs);
 
 export default router;
