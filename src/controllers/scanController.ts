@@ -149,22 +149,6 @@ const resolveStatus = (
   return 'active';
 };
 
-const normalizeDirection = (value?: string): DirectionValue => {
-  return value === 'desc' ? 'desc' : 'asc';
-};
-
-const calculateTicketsSoldBetween = (
-  openingTicket: number,
-  closingTicket: number,
-  direction: DirectionValue
-): number => {
-  const diff =
-    direction === 'desc'
-      ? openingTicket - closingTicket
-      : closingTicket - openingTicket;
-  return diff < 0 ? 0 : diff;
-};
-
 export const scanTicket = async (
   req: AuthRequest,
   res: Response
@@ -228,6 +212,7 @@ export const scanTicket = async (
       master.start_number,
       master.end_number
     );
+    const saleAmountPerTicket = Number(master.price) || 0;
 
     if (parsedScan.packNumber === undefined) {
       res.status(400).json({
@@ -244,25 +229,26 @@ export const scanTicket = async (
       [store_id, master.lottery_id, parsedScan.ticketSerial]
     );
 
-    let inventory;
+    let inventoryRecord: any;
+    let previousRemaining = totalTickets;
+    let newRemaining = 0;
 
     if ((inventoryRows as any[]).length === 0) {
       if (!directionInput) {
-        res
-          .status(400)
-          .json({
-            error: 'Direction is required for the first scan of a book',
-          });
+        res.status(400).json({
+          error: 'Direction is required for the first scan of a book',
+        });
         return;
       }
 
-      const unsoldCount = calculateUnsoldCount(
+      newRemaining = calculateUnsoldCount(
         master.start_number,
         master.end_number,
         currentTicketNumber,
         directionInput
       );
-      const inventoryStatus = resolveStatus(unsoldCount, totalTickets);
+      previousRemaining = newRemaining;
+      const inventoryStatus = resolveStatus(newRemaining, totalTickets);
       const [insertResult] = await pool.query(
         `INSERT INTO STORE_LOTTERY_INVENTORY
           (store_id, lottery_id, serial_number, total_count, current_count, status, direction)
@@ -272,7 +258,7 @@ export const scanTicket = async (
           master.lottery_id,
           parsedScan.ticketSerial,
           totalTickets,
-          unsoldCount,
+          newRemaining,
           inventoryStatus,
           directionInput,
         ]
@@ -283,13 +269,12 @@ export const scanTicket = async (
         'SELECT * FROM STORE_LOTTERY_INVENTORY WHERE id = ?',
         [newId]
       );
-      inventory = (newInventory as any[])[0];
+      inventoryRecord = (newInventory as any[])[0];
     } else {
-      inventory = (inventoryRows as any[])[0];
-
+      const currentInventory = (inventoryRows as any[])[0];
       const storedDirection =
-        inventory.direction === 'asc' || inventory.direction === 'desc'
-          ? (inventory.direction as DirectionValue)
+        currentInventory.direction === 'asc' || currentInventory.direction === 'desc'
+          ? (currentInventory.direction as DirectionValue)
           : 'unknown';
 
       let directionToUse: DirectionValue;
@@ -312,14 +297,18 @@ export const scanTicket = async (
         directionToUse = storedDirection;
       }
 
-      const unsoldCount = calculateUnsoldCount(
+      previousRemaining = Number(currentInventory.current_count);
+      if (isNaN(previousRemaining)) {
+        previousRemaining = totalTickets;
+      }
+      newRemaining = calculateUnsoldCount(
         master.start_number,
         master.end_number,
         currentTicketNumber,
         directionToUse
       );
 
-      const inventoryStatus = resolveStatus(unsoldCount, totalTickets);
+      const inventoryStatus = resolveStatus(newRemaining, totalTickets);
 
       await pool.query(
         `UPDATE STORE_LOTTERY_INVENTORY
@@ -331,23 +320,30 @@ export const scanTicket = async (
          WHERE id = ?`,
         [
           totalTickets,
-          unsoldCount,
+          newRemaining,
           inventoryStatus,
           directionToUse,
-          inventory.id,
+          currentInventory.id,
         ]
       );
 
       const [updatedInventory] = await pool.query(
         'SELECT * FROM STORE_LOTTERY_INVENTORY WHERE id = ?',
-        [inventory.id]
+        [currentInventory.id]
       );
-      inventory = (updatedInventory as any[])[0];
+      inventoryRecord = (updatedInventory as any[])[0];
     }
+
+    const inventory = inventoryRecord;
+    if (!inventory) {
+      throw new Error('Failed to load inventory record');
+    }
+
+    const ticketsSoldThisScan = Math.max(previousRemaining - newRemaining, 0);
+    const salesIncrement = ticketsSoldThisScan * saleAmountPerTicket;
 
     const scannedBy = req.user?.role === 'store_owner' ? req.user?.id : null;
     let scanLogId: number | null = null;
-    const reportDirection = normalizeDirection(inventory.direction);
 
     try {
       const [scanResult] = await pool.query(
@@ -368,58 +364,24 @@ export const scanTicket = async (
 
     if (scanLogId) {
       try {
-        const saleAmountPerTicket = Number(master.price) || 0;
-        const [existingReports] = await pool.query(
-          `SELECT report_id, opening_ticket
-           FROM DAILY_REPORT
-           WHERE store_id = ?
-             AND lottery_id = ?
-             AND book_id = ?
-             AND report_date = CURDATE()`,
-          [store_id, master.lottery_id, inventory.id]
+        await pool.query(
+          `INSERT INTO DAILY_REPORT
+            (store_id, lottery_id, book_id, scan_id, report_date, tickets_sold, total_sales)
+           VALUES (?, ?, ?, ?, CURDATE(), ?, ?)
+           ON DUPLICATE KEY UPDATE
+             scan_id = VALUES(scan_id),
+             tickets_sold = tickets_sold + VALUES(tickets_sold),
+             total_sales = total_sales + VALUES(total_sales),
+             updated_at = CURRENT_TIMESTAMP`,
+          [
+            store_id,
+            master.lottery_id,
+            inventory.id,
+            scanLogId,
+            ticketsSoldThisScan,
+            salesIncrement,
+          ]
         );
-
-        if ((existingReports as any[]).length === 0) {
-          await pool.query(
-            `INSERT INTO DAILY_REPORT
-              (store_id, lottery_id, book_id, scan_id, report_date, opening_ticket, closing_ticket, tickets_sold, total_sales)
-             VALUES (?, ?, ?, ?, CURDATE(), ?, ?, 0, 0)`,
-            [
-              store_id,
-              master.lottery_id,
-              inventory.id,
-              scanLogId,
-              currentTicketNumber,
-              currentTicketNumber,
-            ]
-          );
-        } else {
-          const reportRow = (existingReports as any[])[0];
-          const openingTicket = Number(reportRow.opening_ticket) || 0;
-          const ticketsSold = calculateTicketsSoldBetween(
-            openingTicket,
-            currentTicketNumber,
-            reportDirection
-          );
-          const totalSales = ticketsSold * saleAmountPerTicket;
-
-          await pool.query(
-            `UPDATE DAILY_REPORT
-             SET closing_ticket = ?,
-                 tickets_sold = ?,
-                 total_sales = ?,
-                 scan_id = ?,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE report_id = ?`,
-            [
-              currentTicketNumber,
-              ticketsSold,
-              totalSales,
-              scanLogId,
-              reportRow.report_id,
-            ]
-          );
-        }
       } catch (reportError) {
         console.warn('Failed to persist daily report entry:', reportError);
       }
