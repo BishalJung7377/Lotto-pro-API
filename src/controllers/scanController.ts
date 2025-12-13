@@ -109,37 +109,6 @@ const parseDirectionInput = (value?: string): DirectionValue | undefined => {
   throw new Error('Direction must be either "asc" or "desc"');
 };
 
-const calculateUnsoldCount = (
-  startNumber: number,
-  endNumber: number,
-  currentTicket: number,
-  direction: DirectionValue
-): number => {
-  const totalTickets = calculateTotalTickets(startNumber, endNumber);
-  const minNumber = Math.min(startNumber, endNumber);
-  const maxNumber = Math.max(startNumber, endNumber);
-
-  let ticket = currentTicket;
-  if (ticket < minNumber) ticket = minNumber;
-  if (ticket > maxNumber) ticket = maxNumber;
-
-  const ascendingGame = startNumber <= endNumber;
-  let remaining: number;
-
-  if (ascendingGame) {
-    remaining =
-      direction === 'asc' ? endNumber - ticket + 1 : ticket - startNumber + 1;
-  } else {
-    remaining =
-      direction === 'asc' ? ticket - endNumber + 1 : startNumber - ticket + 1;
-  }
-
-  if (remaining < 0) remaining = 0;
-  if (remaining > totalTickets) remaining = totalTickets;
-
-  return remaining;
-};
-
 const normalizeDigits = (value: string): string => value.replace(/\D/g, '');
 
 const buildBookDigitsPrefix = (
@@ -194,6 +163,35 @@ const computeTicketDelta = (
     throw new Error('Scanned ticket number moved forwards for a descending book');
   }
   return previousTicket - currentTicket;
+};
+
+const computeRemainingInventory = (
+  totalCount: number,
+  currentTicket: number,
+  direction: DirectionValue | undefined,
+  descendingEnd?: number | null
+): number => {
+  let remaining: number;
+  if (direction === 'desc' && descendingEnd !== undefined && descendingEnd !== null) {
+    remaining = currentTicket - descendingEnd;
+  } else {
+    remaining = totalCount - currentTicket;
+  }
+  if (remaining < 0) remaining = 0;
+  if (remaining > totalCount) remaining = totalCount;
+  return remaining;
+};
+
+const assertDirectionBounds = (
+  ticketNumber: number,
+  direction: DirectionValue | undefined,
+  descendingEnd?: number | null
+): void => {
+  if (direction === 'desc' && descendingEnd !== undefined && descendingEnd !== null) {
+    if (ticketNumber < descendingEnd) {
+      throw new Error('Ticket number cannot go below the minimum value for descending games');
+    }
+  }
 };
 
 const resolveStatus = (
@@ -279,6 +277,17 @@ export const scanTicket = async (
 
     const currentTicketNumber = parsedScan.packNumber;
 
+    if (currentTicketNumber < 0) {
+      res.status(400).json({ error: 'Ticket number must be non-negative' });
+      return;
+    }
+    if (currentTicketNumber > totalTickets) {
+      res.status(400).json({
+        error: 'Ticket number exceeds the total tickets in this book',
+      });
+      return;
+    }
+
     const [inventoryRows] = await pool.query(
       `SELECT * FROM STORE_LOTTERY_INVENTORY
        WHERE store_id = ? AND lottery_id = ? AND serial_number = ?`,
@@ -286,7 +295,6 @@ export const scanTicket = async (
     );
 
     let inventoryRecord: any;
-    let newRemaining = 0;
     let ticketsSoldThisScan = 0;
 
     if ((inventoryRows as any[]).length === 0) {
@@ -296,14 +304,20 @@ export const scanTicket = async (
         });
         return;
       }
+      try {
+        assertDirectionBounds(currentTicketNumber, directionInput, master.end_number);
+      } catch (boundsError) {
+        res.status(400).json({ error: (boundsError as Error).message });
+        return;
+      }
 
-      newRemaining = calculateUnsoldCount(
-        master.start_number,
-        master.end_number,
+      const remainingInventory = computeRemainingInventory(
+        totalTickets,
         currentTicketNumber,
-        directionInput
+        directionInput,
+        master.end_number
       );
-      const inventoryStatus = resolveStatus(newRemaining, totalTickets);
+      const inventoryStatus = resolveStatus(remainingInventory, totalTickets);
       const [insertResult] = await pool.query(
         `INSERT INTO STORE_LOTTERY_INVENTORY
           (store_id, lottery_id, serial_number, total_count, current_count, status, direction)
@@ -352,6 +366,13 @@ export const scanTicket = async (
         directionToUse = storedDirection;
       }
 
+      try {
+        assertDirectionBounds(currentTicketNumber, directionToUse, master.end_number);
+      } catch (boundsError) {
+        res.status(400).json({ error: (boundsError as Error).message });
+        return;
+      }
+
       const previousTicketNumberRaw = Number(currentInventory.current_count);
       const previousTicketNumber = isNaN(previousTicketNumberRaw)
         ? null
@@ -369,14 +390,14 @@ export const scanTicket = async (
       }
       ticketsSoldThisScan = computedDelta;
 
-      newRemaining = calculateUnsoldCount(
-        master.start_number,
-        master.end_number,
+      const remainingInventory = computeRemainingInventory(
+        totalTickets,
         currentTicketNumber,
-        directionToUse
+        directionToUse,
+        master.end_number
       );
 
-      const inventoryStatus = resolveStatus(newRemaining, totalTickets);
+      const inventoryStatus = resolveStatus(remainingInventory, totalTickets);
 
       await pool.query(
         `UPDATE STORE_LOTTERY_INVENTORY
@@ -507,18 +528,15 @@ export const scanTicket = async (
       }
     }
 
-    let remainingTickets: number | null = null;
-    if (resolvedDirection) {
-      const currentTicketValue = Number(inventory.current_count);
-      if (!isNaN(currentTicketValue)) {
-        remainingTickets = calculateUnsoldCount(
-          master.start_number,
-          master.end_number,
+    const currentTicketValue = Number(inventory.current_count);
+    const remainingTickets = isNaN(currentTicketValue)
+      ? null
+      : computeRemainingInventory(
+          totalTickets,
           currentTicketValue,
-          resolvedDirection
+          resolvedDirection,
+          master.end_number
         );
-      }
-    }
 
     res.status(200).json({
       status: 'ok',

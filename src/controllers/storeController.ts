@@ -5,6 +5,13 @@ import { CreateStoreRequest } from '../models/types';
 import { authorizeStoreAccess, StoreAccessError } from '../utils/storeAccess';
 import { hashPassword } from '../utils/auth';
 
+const STORE_REMAINING_SQL = `
+  CASE
+    WHEN sli.direction = 'desc' THEN GREATEST(sli.current_count - COALESCE(lm.end_number, 0), 0)
+    ELSE GREATEST(sli.total_count - sli.current_count, 0)
+  END
+`;
+
 export const getStores = async (
   req: AuthRequest,
   res: Response
@@ -24,9 +31,10 @@ export const getStores = async (
         s.lottery_ac_no,
         s.created_at,
         COUNT(sli.lottery_id) as lottery_count,
-        COALESCE(SUM(sli.current_count), 0) as total_active_tickets
+        COALESCE(SUM(${STORE_REMAINING_SQL}), 0) as total_active_tickets
       FROM STORES s
       LEFT JOIN STORE_LOTTERY_INVENTORY sli ON s.store_id = sli.store_id
+      LEFT JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
       WHERE s.owner_id = ?
       GROUP BY s.store_id
       ORDER BY s.created_at DESC`,
@@ -354,17 +362,20 @@ export const getClerkStoreDashboard = async (
 
     const [inventory] = await pool.query(
       `SELECT
-        id,
-        store_id,
-        lottery_id,
-        serial_number,
-        total_count,
-        current_count,
-        status,
-        created_at
-      FROM STORE_LOTTERY_INVENTORY
-      WHERE store_id = ?
-      ORDER BY updated_at DESC`,
+        sli.id,
+        sli.store_id,
+        sli.lottery_id,
+        sli.serial_number,
+        sli.total_count,
+        sli.current_count,
+        ${STORE_REMAINING_SQL} AS remaining_tickets,
+        sli.direction,
+        sli.status,
+        sli.created_at
+      FROM STORE_LOTTERY_INVENTORY sli
+      LEFT JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
+      WHERE sli.store_id = ?
+      ORDER BY sli.updated_at DESC`,
       [storeId]
     );
 

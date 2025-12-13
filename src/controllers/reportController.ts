@@ -3,6 +3,13 @@ import { pool } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 import { authorizeStoreAccess, StoreAccessError } from '../utils/storeAccess';
 
+const REMAINING_TICKETS_SQL = `
+  CASE
+    WHEN sli.direction = 'desc' THEN GREATEST(sli.current_count - COALESCE(lm.end_number, 0), 0)
+    ELSE GREATEST(sli.total_count - sli.current_count, 0)
+  END
+`;
+
 const ensureStoreOwnership = async (
   storeId: number,
   ownerId?: number
@@ -30,11 +37,12 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
     const [inventorySummary] = await pool.query(
       `SELECT
         COUNT(*) as total_lotteries,
-        SUM(total_count) as total_tickets,
-        SUM(current_count) as available_tickets,
-        SUM(total_count - current_count) as sold_tickets
-      FROM STORE_LOTTERY_INVENTORY
-      WHERE store_id = ?`,
+        COALESCE(SUM(sli.total_count), 0) as total_tickets,
+        COALESCE(SUM(${REMAINING_TICKETS_SQL}), 0) as available_tickets,
+        COALESCE(SUM(sli.total_count), 0) - COALESCE(SUM(${REMAINING_TICKETS_SQL}), 0) as sold_tickets
+      FROM STORE_LOTTERY_INVENTORY sli
+      JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
+      WHERE sli.store_id = ?`,
       [storeId]
     );
 
@@ -47,8 +55,9 @@ export const getStoreReport = async (req: AuthRequest, res: Response): Promise<v
         lm.image_url,
         sli.total_count,
         sli.current_count,
-        (sli.total_count - sli.current_count) as sold_count,
-        (sli.total_count - sli.current_count) * lm.price as revenue
+        ${REMAINING_TICKETS_SQL} as remaining_tickets,
+        (sli.total_count - (${REMAINING_TICKETS_SQL})) as sold_count,
+        (sli.total_count - (${REMAINING_TICKETS_SQL})) * lm.price as revenue
       FROM STORE_LOTTERY_INVENTORY sli
       JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
       WHERE sli.store_id = ?
@@ -129,8 +138,10 @@ export const getLotteryReport = async (req: AuthRequest, res: Response): Promise
         lm.image_url,
         lm.start_number,
         lm.end_number,
-        (sli.total_count - sli.current_count) as sold_count,
-        (sli.total_count - sli.current_count) * lm.price as revenue
+        lm.lottery_number,
+        ${REMAINING_TICKETS_SQL} as remaining_tickets,
+        (sli.total_count - (${REMAINING_TICKETS_SQL})) as sold_count,
+        (sli.total_count - (${REMAINING_TICKETS_SQL})) * lm.price as revenue
       FROM STORE_LOTTERY_INVENTORY sli
       JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
       WHERE sli.store_id = ? AND sli.lottery_id = ?`,
@@ -171,7 +182,7 @@ export const getLotteryReport = async (req: AuthRequest, res: Response): Promise
       availableTickets,
       statistics: {
         total_tickets: lottery.total_count,
-        available: lottery.current_count,
+        available: lottery.remaining_tickets,
         sold: lottery.sold_count,
         revenue: lottery.revenue,
         sell_through_rate: ((lottery.sold_count / lottery.total_count) * 100).toFixed(2) + '%',
@@ -287,7 +298,8 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
           WHEN sli.direction = 'desc' THEN GREATEST(MIN(st.ticket_number) - MAX(st.ticket_number), 0) * lm.price
           ELSE 0
         END AS total_sales,
-        COUNT(*) AS scans_count
+        COUNT(*) AS scans_count,
+        ${REMAINING_TICKETS_SQL} AS remaining_tickets
       FROM STORE_LOTTERY_INVENTORY sli
       JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
       JOIN SCANNED_TICKETS st
@@ -316,7 +328,8 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
           lm.lottery_name,
           lm.lottery_number,
           lm.price,
-          sli.serial_number
+          sli.serial_number,
+          ${REMAINING_TICKETS_SQL} AS remaining_tickets
         FROM DAILY_REPORT dr
         JOIN LOTTERY_MASTER lm ON dr.lottery_id = lm.lottery_id
         JOIN STORE_LOTTERY_INVENTORY sli ON dr.book_id = sli.id

@@ -3,6 +3,13 @@ import { pool } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 import { authorizeStoreAccess, StoreAccessError } from '../utils/storeAccess';
 
+const LOTTERY_REMAINING_SQL = `
+  CASE
+    WHEN sli.direction = 'desc' THEN GREATEST(sli.current_count - COALESCE(lm.end_number, 0), 0)
+    ELSE GREATEST(sli.total_count - sli.current_count, 0)
+  END
+`;
+
 export const getLotteryTypes = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const storeId = Number(req.params.storeId);
@@ -43,18 +50,20 @@ export const getStoreInventory = async (req: AuthRequest, res: Response): Promis
     // Get inventory with lottery type details
     const [result] = await pool.query(
       `SELECT
-        id,
-        store_id,
-        lottery_id,
-        serial_number,
-        total_count,
-        current_count,
-        direction,
-        status,
-        created_at
-      FROM STORE_LOTTERY_INVENTORY
-      WHERE store_id = ?
-      ORDER BY updated_at DESC`,
+        sli.id,
+        sli.store_id,
+        sli.lottery_id,
+        sli.serial_number,
+        sli.total_count,
+        sli.current_count,
+        ${LOTTERY_REMAINING_SQL} AS remaining_tickets,
+        sli.direction,
+        sli.status,
+        sli.created_at
+      FROM STORE_LOTTERY_INVENTORY sli
+      LEFT JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
+      WHERE sli.store_id = ?
+      ORDER BY sli.updated_at DESC`,
       [storeId]
     );
 
@@ -89,7 +98,8 @@ export const getLotteryDetail = async (req: AuthRequest, res: Response): Promise
         lm.image_url,
         lm.start_number,
         lm.end_number,
-        lm.status
+        lm.status,
+        ${LOTTERY_REMAINING_SQL} AS remaining_tickets
       FROM STORE_LOTTERY_INVENTORY sli
       JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
       WHERE sli.store_id = ? AND sli.lottery_id = ?`,
