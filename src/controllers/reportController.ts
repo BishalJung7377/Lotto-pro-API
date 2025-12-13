@@ -266,29 +266,75 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
 
     await authorizeStoreAccess(storeId, req.user);
 
-    const [reports] = await pool.query(
+    const [scanDerived] = await pool.query(
       `SELECT
-        dr.report_id,
-        dr.lottery_id,
-        dr.book_id,
-        dr.scan_id,
-        dr.report_date,
-        dr.tickets_sold,
-        dr.total_sales,
+        sli.id AS book_id,
+        sli.lottery_id,
+        sli.serial_number,
+        sli.direction,
         lm.lottery_name,
         lm.lottery_number,
         lm.price,
-        sli.serial_number
-      FROM DAILY_REPORT dr
-      JOIN LOTTERY_MASTER lm ON dr.lottery_id = lm.lottery_id
-      JOIN STORE_LOTTERY_INVENTORY sli ON dr.book_id = sli.id
-      WHERE dr.store_id = ?
-        AND dr.report_date = ?
+        MIN(st.ticket_number) AS opening_ticket,
+        MAX(st.ticket_number) AS closing_ticket,
+        CASE
+          WHEN sli.direction = 'asc' THEN GREATEST(MAX(st.ticket_number) - MIN(st.ticket_number), 0)
+          WHEN sli.direction = 'desc' THEN GREATEST(MIN(st.ticket_number) - MAX(st.ticket_number), 0)
+          ELSE 0
+        END AS tickets_sold,
+        CASE
+          WHEN sli.direction = 'asc' THEN GREATEST(MAX(st.ticket_number) - MIN(st.ticket_number), 0) * lm.price
+          WHEN sli.direction = 'desc' THEN GREATEST(MIN(st.ticket_number) - MAX(st.ticket_number), 0) * lm.price
+          ELSE 0
+        END AS total_sales,
+        COUNT(*) AS scans_count
+      FROM STORE_LOTTERY_INVENTORY sli
+      JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
+      JOIN SCANNED_TICKETS st
+        ON st.store_id = sli.store_id
+       AND st.lottery_type_id = sli.lottery_id
+      WHERE sli.store_id = ?
+        AND DATE(st.scanned_at) = ?
+        AND LEFT(REPLACE(REPLACE(st.barcode_data, '-', ''), ' ', ''), LENGTH(CONCAT(lm.lottery_number, COALESCE(sli.serial_number, '')))) = CONCAT(lm.lottery_number, COALESCE(sli.serial_number, ''))
+      GROUP BY sli.id, sli.lottery_id, sli.serial_number, sli.direction, lm.lottery_name, lm.lottery_number, lm.price
       ORDER BY lm.lottery_name`,
       [storeId, dateParam]
     );
 
-    const totals = (reports as any[]).reduce(
+    let breakdownRows = scanDerived as any[];
+
+    if (breakdownRows.length === 0) {
+      const [reports] = await pool.query(
+        `SELECT
+          dr.report_id,
+          dr.lottery_id,
+          dr.book_id,
+          dr.scan_id,
+          dr.report_date,
+          dr.tickets_sold,
+          dr.total_sales,
+          lm.lottery_name,
+          lm.lottery_number,
+          lm.price,
+          sli.serial_number
+        FROM DAILY_REPORT dr
+        JOIN LOTTERY_MASTER lm ON dr.lottery_id = lm.lottery_id
+        JOIN STORE_LOTTERY_INVENTORY sli ON dr.book_id = sli.id
+        WHERE dr.store_id = ?
+          AND dr.report_date = ?
+        ORDER BY lm.lottery_name`,
+        [storeId, dateParam]
+      );
+
+      breakdownRows = (reports as any[]).map((row) => ({
+        ...row,
+        opening_ticket: null,
+        closing_ticket: null,
+        scans_count: null,
+      }));
+    }
+
+    const totals = breakdownRows.reduce(
       (acc, row) => {
         acc.tickets += Number(row.tickets_sold) || 0;
         acc.revenue += Number(row.total_sales) || 0;
@@ -302,7 +348,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
       date: dateParam,
       total_tickets_sold: totals.tickets,
       total_revenue: totals.revenue,
-      breakdown: reports,
+      breakdown: breakdownRows,
     });
   } catch (error) {
     if (error instanceof StoreAccessError) {
