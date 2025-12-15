@@ -5,8 +5,14 @@ import { authorizeStoreAccess, StoreAccessError } from '../utils/storeAccess';
 
 const REMAINING_TICKETS_SQL = `
   CASE
-    WHEN sli.direction = 'desc' THEN GREATEST(sli.current_count - COALESCE(lm.end_number, 0), 0)
-    ELSE GREATEST(sli.total_count - sli.current_count, 0)
+    WHEN sli.direction = 'desc' THEN LEAST(
+      GREATEST(sli.current_count - COALESCE(lm.start_number, 0), 0),
+      sli.total_count
+    )
+    ELSE LEAST(
+      GREATEST(COALESCE(lm.end_number, 0) - sli.current_count, 0),
+      sli.total_count
+    )
   END
 `;
 

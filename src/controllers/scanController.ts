@@ -166,31 +166,33 @@ const computeTicketDelta = (
 };
 
 const computeRemainingInventory = (
-  totalCount: number,
+  startNumber: number,
+  endNumber: number,
   currentTicket: number,
-  direction: DirectionValue | undefined,
-  descendingEnd?: number | null
+  direction: DirectionValue | undefined
 ): number => {
-  let remaining: number;
-  if (direction === 'desc' && descendingEnd !== undefined && descendingEnd !== null) {
-    remaining = currentTicket - descendingEnd;
-  } else {
-    remaining = totalCount - currentTicket;
+  if (!direction) return Math.max(endNumber - currentTicket, 0);
+  if (direction === 'asc') {
+    return Math.max(endNumber - currentTicket, 0);
   }
-  if (remaining < 0) remaining = 0;
-  if (remaining > totalCount) remaining = totalCount;
-  return remaining;
+  return Math.max(currentTicket - startNumber, 0);
 };
 
 const assertDirectionBounds = (
   ticketNumber: number,
   direction: DirectionValue | undefined,
-  descendingEnd?: number | null
+  startNumber: number,
+  endNumber: number
 ): void => {
-  if (direction === 'desc' && descendingEnd !== undefined && descendingEnd !== null) {
-    if (ticketNumber < descendingEnd) {
-      throw new Error('Ticket number cannot go below the minimum value for descending games');
-    }
+  if (!direction) return;
+  if (ticketNumber < startNumber || ticketNumber > endNumber) {
+    throw new Error('Ticket number is outside the valid range for this book');
+  }
+  if (direction === 'desc' && ticketNumber < startNumber) {
+    throw new Error('Descending books cannot scan below the start number');
+  }
+  if (direction === 'asc' && ticketNumber > endNumber) {
+    throw new Error('Ascending books cannot scan past the end number');
   }
 };
 
@@ -276,15 +278,11 @@ export const scanTicket = async (
     }
 
     const currentTicketNumber = parsedScan.packNumber;
+    const minTicket = Math.min(master.start_number, master.end_number);
+    const maxTicket = Math.max(master.start_number, master.end_number);
 
-    if (currentTicketNumber < 0) {
-      res.status(400).json({ error: 'Ticket number must be non-negative' });
-      return;
-    }
-    if (currentTicketNumber > totalTickets) {
-      res.status(400).json({
-        error: 'Ticket number exceeds the total tickets in this book',
-      });
+    if (currentTicketNumber < minTicket || currentTicketNumber > maxTicket) {
+      res.status(400).json({ error: 'Ticket number is outside the valid range' });
       return;
     }
 
@@ -305,17 +303,22 @@ export const scanTicket = async (
         return;
       }
       try {
-        assertDirectionBounds(currentTicketNumber, directionInput, master.end_number);
+        assertDirectionBounds(
+          currentTicketNumber,
+          directionInput,
+          minTicket,
+          maxTicket
+        );
       } catch (boundsError) {
         res.status(400).json({ error: (boundsError as Error).message });
         return;
       }
 
       const remainingInventory = computeRemainingInventory(
-        totalTickets,
+        master.start_number,
+        master.end_number,
         currentTicketNumber,
-        directionInput,
-        master.end_number
+        directionInput
       );
       const inventoryStatus = resolveStatus(remainingInventory, totalTickets);
       const [insertResult] = await pool.query(
@@ -367,7 +370,12 @@ export const scanTicket = async (
       }
 
       try {
-        assertDirectionBounds(currentTicketNumber, directionToUse, master.end_number);
+        assertDirectionBounds(
+          currentTicketNumber,
+          directionToUse,
+          minTicket,
+          maxTicket
+        );
       } catch (boundsError) {
         res.status(400).json({ error: (boundsError as Error).message });
         return;
@@ -377,6 +385,22 @@ export const scanTicket = async (
       const previousTicketNumber = isNaN(previousTicketNumberRaw)
         ? null
         : previousTicketNumberRaw;
+      if (
+        directionToUse === 'asc' &&
+        previousTicketNumber !== null &&
+        previousTicketNumber >= maxTicket
+      ) {
+        res.status(400).json({ error: 'All tickets have already been sold for this book' });
+        return;
+      }
+      if (
+        directionToUse === 'desc' &&
+        previousTicketNumber !== null &&
+        previousTicketNumber <= minTicket
+      ) {
+        res.status(400).json({ error: 'All tickets have already been sold for this book' });
+        return;
+      }
       let computedDelta = 0;
       try {
         computedDelta = computeTicketDelta(
@@ -391,10 +415,10 @@ export const scanTicket = async (
       ticketsSoldThisScan = computedDelta;
 
       const remainingInventory = computeRemainingInventory(
-        totalTickets,
+        master.start_number,
+        master.end_number,
         currentTicketNumber,
-        directionToUse,
-        master.end_number
+        directionToUse
       );
 
       const inventoryStatus = resolveStatus(remainingInventory, totalTickets);
@@ -484,10 +508,10 @@ export const scanTicket = async (
     const remainingTickets = isNaN(currentTicketValue)
       ? null
       : computeRemainingInventory(
-          totalTickets,
+          master.start_number,
+          master.end_number,
           currentTicketValue,
-          resolvedDirection,
-          master.end_number
+          resolvedDirection
         );
 
     res.status(200).json({
