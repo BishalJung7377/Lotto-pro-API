@@ -10,6 +10,19 @@ const REMAINING_TICKETS_SQL = `
   END
 `;
 
+const normalizeDigits = (value?: string | null): string => {
+  if (!value) return '';
+  return value.replace(/\D/g, '');
+};
+
+const buildBarcodePrefix = (
+  lotteryNumber?: string | null,
+  serialNumber?: string | null
+): string | null => {
+  const prefix = normalizeDigits(`${lotteryNumber ?? ''}${serialNumber ?? ''}`);
+  return prefix.length ? prefix : null;
+};
+
 const ensureStoreOwnership = async (
   storeId: number,
   ownerId?: number
@@ -277,78 +290,105 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
 
     await authorizeStoreAccess(storeId, req.user);
 
-    const [reportRows] = await pool.query(
+    const dayStart = `${dateParam} 00:00:00`;
+    const dayEnd = `${dateParam} 23:59:59`;
+
+    const [books] = await pool.query(
       `SELECT
-        dr.report_id,
-        dr.lottery_id,
-        dr.book_id,
-        dr.scan_id,
-        dr.report_date,
-        dr.tickets_sold,
-        dr.total_sales,
+        sli.id AS book_id,
+        sli.serial_number,
+        sli.direction,
+        lm.lottery_id,
         lm.lottery_name,
         lm.lottery_number,
         lm.price,
-        sli.serial_number,
-        sli.direction,
         ${REMAINING_TICKETS_SQL} AS remaining_tickets
-      FROM DAILY_REPORT dr
-      JOIN LOTTERY_MASTER lm ON dr.lottery_id = lm.lottery_id
-      JOIN STORE_LOTTERY_INVENTORY sli ON dr.book_id = sli.id
-      WHERE dr.store_id = ?
-        AND dr.report_date = ?
-      ORDER BY lm.lottery_name`,
-      [storeId, dateParam]
+      FROM STORE_LOTTERY_INVENTORY sli
+      JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
+      WHERE sli.store_id = ?`,
+      [storeId]
     );
 
-    let breakdownRows = (reportRows as any[]).map((row) => ({
-      ...row,
-      opening_ticket: null,
-      closing_ticket: null,
-      scans_count: null,
-    }));
+    const breakdown: any[] = [];
 
-    if (breakdownRows.length === 0) {
-      const [scanDerived] = await pool.query(
+    for (const book of books as any[]) {
+      if (!book.direction || book.direction === 'unknown') {
+        continue;
+      }
+
+      const prefix = buildBarcodePrefix(book.lottery_number, book.serial_number);
+      if (!prefix) {
+        continue;
+      }
+
+      const prefixLength = prefix.length;
+
+      const [dayStatsRows] = await pool.query(
         `SELECT
-          sli.id AS book_id,
-          sli.lottery_id,
-          sli.serial_number,
-          sli.direction,
-          lm.lottery_name,
-          lm.lottery_number,
-          lm.price,
-          MIN(st.ticket_number) AS opening_ticket,
-          MAX(st.ticket_number) AS closing_ticket,
-          CASE
-            WHEN sli.direction = 'asc' THEN GREATEST(MAX(st.ticket_number) - MIN(st.ticket_number), 0)
-            WHEN sli.direction = 'desc' THEN GREATEST(MIN(st.ticket_number) - MAX(st.ticket_number), 0)
-            ELSE 0
-          END AS tickets_sold,
-          CASE
-            WHEN sli.direction = 'asc' THEN GREATEST(MAX(st.ticket_number) - MIN(st.ticket_number), 0) * lm.price
-            WHEN sli.direction = 'desc' THEN GREATEST(MIN(st.ticket_number) - MAX(st.ticket_number), 0) * lm.price
-            ELSE 0
-          END AS total_sales,
-          COUNT(*) AS scans_count,
-          ${REMAINING_TICKETS_SQL} AS remaining_tickets
-        FROM STORE_LOTTERY_INVENTORY sli
-        JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
-        JOIN SCANNED_TICKETS st
-          ON st.store_id = sli.store_id
-         AND st.lottery_type_id = sli.lottery_id
-        WHERE sli.store_id = ?
-          AND DATE(st.scanned_at) = ?
-          AND LEFT(REPLACE(REPLACE(st.barcode_data, '-', ''), ' ', ''), LENGTH(CONCAT(lm.lottery_number, COALESCE(sli.serial_number, '')))) = CONCAT(lm.lottery_number, COALESCE(sli.serial_number, ''))
-        GROUP BY sli.id, sli.lottery_id, sli.serial_number, sli.direction, lm.lottery_name, lm.lottery_number, lm.price
-        ORDER BY lm.lottery_name`,
-        [storeId, dateParam]
+          MIN(st.ticket_number) AS first_ticket,
+          MAX(st.ticket_number) AS last_ticket,
+          COUNT(*) AS scans_count
+        FROM SCANNED_TICKETS st
+        WHERE st.store_id = ?
+          AND st.lottery_type_id = ?
+          AND st.scanned_at >= ?
+          AND st.scanned_at <= ?
+          AND LEFT(REPLACE(REPLACE(st.barcode_data, '-', ''), ' ', ''), ?) = ?`,
+        [storeId, book.lottery_id, dayStart, dayEnd, prefixLength, prefix]
       );
 
-      breakdownRows = scanDerived as any[];
+      const dayStats = (dayStatsRows as any[])[0];
+      if (!dayStats || Number(dayStats.scans_count) === 0) {
+        continue;
+      }
+
+      const [prevRows] = await pool.query(
+        `SELECT st.ticket_number
+         FROM SCANNED_TICKETS st
+         WHERE st.store_id = ?
+           AND st.lottery_type_id = ?
+           AND st.scanned_at < ?
+           AND LEFT(REPLACE(REPLACE(st.barcode_data, '-', ''), ' ', ''), ?) = ?
+         ORDER BY st.scanned_at DESC, st.id DESC
+         LIMIT 1`,
+        [storeId, book.lottery_id, dayStart, prefixLength, prefix]
+      );
+
+      const previousTicketRaw = (prevRows as any[])[0]?.ticket_number;
+      const firstTicket = Number(dayStats.first_ticket);
+      const lastTicket = Number(dayStats.last_ticket);
+
+      const openingTicket =
+        typeof previousTicketRaw === 'number' ? Number(previousTicketRaw) : firstTicket;
+      const closingTicket = lastTicket;
+
+      let ticketsSold = 0;
+      if (book.direction === 'asc') {
+        ticketsSold = Math.max(0, closingTicket - openingTicket);
+      } else {
+        ticketsSold = Math.max(0, openingTicket - closingTicket);
+      }
+
+      const totalSales = ticketsSold * Number(book.price);
+
+      breakdown.push({
+        book_id: book.book_id,
+        lottery_id: book.lottery_id,
+        serial_number: book.serial_number,
+        direction: book.direction,
+        lottery_name: book.lottery_name,
+        lottery_number: book.lottery_number,
+        price: book.price,
+        opening_ticket: openingTicket,
+        closing_ticket: closingTicket,
+        tickets_sold: ticketsSold,
+        total_sales: totalSales,
+        scans_count: Number(dayStats.scans_count),
+        remaining_tickets: Number(book.remaining_tickets),
+      });
     }
 
-    const totals = breakdownRows.reduce(
+    const totals = breakdown.reduce(
       (acc, row) => {
         acc.tickets += Number(row.tickets_sold) || 0;
         acc.revenue += Number(row.total_sales) || 0;
@@ -362,7 +402,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
       date: dateParam,
       total_tickets_sold: totals.tickets,
       total_revenue: totals.revenue,
-      breakdown: breakdownRows,
+      breakdown,
     });
   } catch (error) {
     if (error instanceof StoreAccessError) {
