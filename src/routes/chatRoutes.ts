@@ -103,7 +103,7 @@ router.post(
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as any;
 
       if (!response.ok) {
         console.error('Gemini API error:', data);
