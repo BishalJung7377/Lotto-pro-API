@@ -498,7 +498,7 @@ export const deleteStoreOwnerAccount = async (
       const storePlaceholders = storeIds.map(() => '?').join(', ');
 
       const [inventories] = await connection.query(
-        `SELECT id FROM store_lottery_inventory WHERE store_id IN (${storePlaceholders})`,
+        `SELECT id FROM STORE_LOTTERY_INVENTORY WHERE store_id IN (${storePlaceholders})`,
         storeIds
       );
 
@@ -514,7 +514,7 @@ export const deleteStoreOwnerAccount = async (
       }
 
       await connection.query(
-        `DELETE FROM store_lottery_inventory WHERE store_id IN (${storePlaceholders})`,
+        `DELETE FROM STORE_LOTTERY_INVENTORY WHERE store_id IN (${storePlaceholders})`,
         storeIds
       );
 
