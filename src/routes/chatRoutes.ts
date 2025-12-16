@@ -36,7 +36,7 @@ type ChatHistoryEntry = {
   content: string;
 };
 
-const MODEL_NAME = 'gemini-1.5-flash';
+const MODEL_NAME = 'gemini-pro';
 
 type GeminiModel = ReturnType<GoogleGenerativeAI['getGenerativeModel']>;
 let cachedModel: GeminiModel | null = null;
