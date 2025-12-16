@@ -95,7 +95,7 @@ const calculateTotalTickets = (
   startNumber: number,
   endNumber: number
 ): number => {
-  return Math.abs(endNumber - startNumber);
+  return Math.abs(endNumber - startNumber) + 1;
 };
 
 type DirectionValue = 'asc' | 'desc';
@@ -173,12 +173,17 @@ const computeRemainingInventory = (
 ): number => {
   const minTicket = Math.min(startNumber, endNumber);
   const maxTicket = Math.max(startNumber, endNumber);
+  const totalTickets = calculateTotalTickets(startNumber, endNumber);
 
-  if (!direction || direction === 'asc') {
-    return Math.max(maxTicket - currentTicket, 0);
+  let soldTickets: number;
+  if (direction === 'desc') {
+    soldTickets = Math.max(0, maxTicket - currentTicket);
+  } else {
+    soldTickets = Math.max(0, currentTicket - minTicket);
   }
 
-  return Math.max(currentTicket - minTicket, 0);
+  const clampedSold = Math.min(soldTickets, totalTickets);
+  return Math.max(totalTickets - clampedSold, 0);
 };
 
 const assertDirectionBounds = (
