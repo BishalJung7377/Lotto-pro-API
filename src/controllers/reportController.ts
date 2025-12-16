@@ -2,6 +2,13 @@ import { Response } from 'express';
 import { pool } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
 import { authorizeStoreAccess, StoreAccessError } from '../utils/storeAccess';
+import {
+  addDaysInTimeZone,
+  getDefaultTimeZone,
+  parseDateInTimeZone,
+  startOfDayInTimeZone,
+  toSqlDateTime,
+} from '../utils/timezone';
 
 const REMAINING_TICKETS_SQL = `
   CASE
@@ -296,20 +303,6 @@ export const getSalesAnalytics = async (req: AuthRequest, res: Response): Promis
   }
 };
 
-const startOfDay = (date: Date): Date => {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-};
-
-const addDays = (date: Date, days: number): Date => {
-  const result = new Date(date);
-  result.setDate(result.getDate() + days);
-  return result;
-};
-
-const toSqlDateTime = (date: Date): string => {
-  return date.toISOString().slice(0, 19).replace('T', ' ');
-};
-
 interface ReportRange {
   start: Date;
   endExclusive: Date;
@@ -322,31 +315,31 @@ const resolveReportRange = (
   startDateParam?: string,
   endDateParam?: string
 ): ReportRange => {
-  const today = startOfDay(new Date());
-  const normalizeDateInput = (input: string): Date => {
-    const parts = input.split('-').map((part) => parseInt(part, 10));
-    if (parts.length !== 3 || parts.some((n) => isNaN(n))) {
-      throw new Error('Invalid date format. Use YYYY-MM-DD');
-    }
-    return new Date(parts[0], parts[1] - 1, parts[2]);
-  };
+  const timeZone = getDefaultTimeZone();
+  const today = startOfDayInTimeZone(new Date(), timeZone);
 
   switch ((rangeParam || '').toLowerCase()) {
     case 'last7': {
-      const start = addDays(today, -6);
-      return { start, endExclusive: addDays(today, 1), label: 'last_7_days' };
+      const start = addDaysInTimeZone(today, -6);
+      return { start, endExclusive: addDaysInTimeZone(today, 1), label: 'last_7_days' };
     }
     case 'this_month': {
-      const start = new Date(today.getFullYear(), today.getMonth(), 1);
-      const end = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      const start = startOfDayInTimeZone(
+        new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)),
+        timeZone
+      );
+      const end = startOfDayInTimeZone(
+        new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1)),
+        timeZone
+      );
       return { start, endExclusive: end, label: 'this_month' };
     }
     case 'custom': {
       if (!startDateParam || !endDateParam) {
         throw new Error('start_date and end_date are required for custom range');
       }
-      const start = startOfDay(normalizeDateInput(startDateParam));
-      const end = addDays(startOfDay(normalizeDateInput(endDateParam)), 1);
+      const start = parseDateInTimeZone(startDateParam, timeZone);
+      const end = addDaysInTimeZone(parseDateInTimeZone(endDateParam, timeZone), 1);
       if (end <= start) {
         throw new Error('end_date must be after start_date');
       }
@@ -356,13 +349,17 @@ const resolveReportRange = (
       if (!dateParam) {
         throw new Error('date parameter is required for date range');
       }
-      const base = startOfDay(normalizeDateInput(dateParam));
-      return { start: base, endExclusive: addDays(base, 1), label: 'specific_date' };
+      const base = parseDateInTimeZone(dateParam, timeZone);
+      return {
+        start: base,
+        endExclusive: addDaysInTimeZone(base, 1),
+        label: 'specific_date',
+      };
     }
     case 'today':
     default: {
-      const base = dateParam ? startOfDay(normalizeDateInput(dateParam)) : today;
-      return { start: base, endExclusive: addDays(base, 1), label: 'today' };
+      const base = dateParam ? parseDateInTimeZone(dateParam, timeZone) : today;
+      return { start: base, endExclusive: addDaysInTimeZone(base, 1), label: 'today' };
     }
   }
 };
