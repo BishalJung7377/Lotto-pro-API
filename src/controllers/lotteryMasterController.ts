@@ -196,27 +196,7 @@ export const createLotteryMaster = async (
     } =
       validation.data;
 
-    const [existingLottery] = await pool.query(
-      `SELECT lottery_id FROM ${LOTTERY_TABLE} WHERE lottery_name = ?`,
-      [lottery_name]
-    );
-
-    if ((existingLottery as any[]).length > 0) {
-      res
-        .status(400)
-        .json({ error: 'Lottery with this name already exists' });
-      return;
-    }
-
-    const [existingNumber] = await pool.query(
-      `SELECT lottery_id FROM ${LOTTERY_TABLE} WHERE lottery_number = ?`,
-      [lottery_number]
-    );
-
-    if ((existingNumber as any[]).length > 0) {
-      res.status(400).json({ error: 'Lottery with this number already exists' });
-      return;
-    }
+    // Allow duplicate names/numbers; no uniqueness enforcement here
 
     const [insertResult] = await pool.query(
       `INSERT INTO ${LOTTERY_TABLE} (lottery_name, lottery_number, price, launch_date, state, start_number, end_number, status, image_url)
