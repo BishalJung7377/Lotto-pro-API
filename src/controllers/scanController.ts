@@ -223,7 +223,9 @@ export const scanTicket = async (
       return;
     }
 
-    await authorizeStoreAccess(store_id, req.user);
+    const storeAccessRecord = await authorizeStoreAccess(store_id, req.user);
+    const targetStoreId = storeAccessRecord.store_id;
+    const storeOwnerId = storeAccessRecord.owner_id;
 
     let parsedScan: ParsedScanPayload;
 
@@ -295,7 +297,7 @@ export const scanTicket = async (
     const [inventoryRows] = await pool.query(
       `SELECT * FROM STORE_LOTTERY_INVENTORY
        WHERE store_id = ? AND lottery_id = ? AND serial_number = ?`,
-      [store_id, master.lottery_id, parsedScan.ticketSerial]
+      [targetStoreId, master.lottery_id, parsedScan.ticketSerial]
     );
 
     let inventoryRecord: any;
@@ -332,7 +334,7 @@ export const scanTicket = async (
           (store_id, lottery_id, serial_number, total_count, current_count, status, direction)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
-          store_id,
+          targetStoreId,
           master.lottery_id,
           parsedScan.ticketSerial,
           totalTickets,
@@ -463,7 +465,10 @@ export const scanTicket = async (
         ? (inventory.direction as DirectionValue)
         : undefined;
 
-    const scannedBy = req.user?.id ?? null;
+    const scannedBy =
+      req.user?.role === 'store_owner'
+        ? req.user.id
+        : storeOwnerId ?? null;
     let scanLogId: number | null = null;
 
     try {
@@ -471,7 +476,7 @@ export const scanTicket = async (
         `INSERT INTO SCANNED_TICKETS (store_id, barcode_data, lottery_type_id, ticket_number, scanned_by)
          VALUES (?, ?, ?, ?, ?)`,
         [
-          store_id,
+          targetStoreId,
           parsedScan.raw,
           master.lottery_id,
           parsedScan.packNumber,
@@ -497,7 +502,7 @@ export const scanTicket = async (
              total_sales = total_sales + VALUES(total_sales),
              updated_at = CURRENT_TIMESTAMP`,
           [
-            store_id,
+            targetStoreId,
             master.lottery_id,
             inventory.id,
             scanLogId,
@@ -537,7 +542,7 @@ export const scanTicket = async (
       },
       inventory: {
         id: inventory.id,
-        store_id,
+        store_id: targetStoreId,
         lottery_number: master.lottery_number,
         lottery_type_id: master.lottery_id,
         serial_number: inventory.serial_number,
@@ -564,10 +569,11 @@ export const getScanHistory = async (
   res: Response
 ): Promise<void> => {
   try {
-    const storeId = parseInt(req.params.storeId);
+    const requestedStoreId = parseInt(req.params.storeId);
     const limit = parseInt(req.query.limit as string) || 50;
 
-    await authorizeStoreAccess(storeId, req.user);
+    const storeRecord = await authorizeStoreAccess(requestedStoreId, req.user);
+    const storeId = storeRecord.store_id;
 
     const [result] = await pool.query(
       `SELECT

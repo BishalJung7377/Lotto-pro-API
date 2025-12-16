@@ -404,7 +404,8 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
       return;
     }
 
-    await authorizeStoreAccess(storeId, req.user);
+    const storeRecord = await authorizeStoreAccess(storeId, req.user);
+    const effectiveStoreId = storeRecord.store_id;
 
     const startSql = toSqlDateTime(reportRange.start);
     const endSql = toSqlDateTime(reportRange.endExclusive);
@@ -422,7 +423,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
       FROM STORE_LOTTERY_INVENTORY sli
       JOIN LOTTERY_MASTER lm ON sli.lottery_id = lm.lottery_id
       WHERE sli.store_id = ?`,
-      [storeId]
+      [effectiveStoreId]
     );
 
     const breakdown: any[] = [];
@@ -449,7 +450,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
            AND LEFT(REPLACE(REPLACE(st.barcode_data, '-', ''), ' ', ''), ?) = ?
          ORDER BY st.scanned_at ASC, st.id ASC
          LIMIT 1`,
-        [storeId, book.lottery_id, startSql, endSql, prefixLength, prefix]
+        [effectiveStoreId, book.lottery_id, startSql, endSql, prefixLength, prefix]
       );
 
       const [lastRows] = await pool.query(
@@ -462,7 +463,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
            AND LEFT(REPLACE(REPLACE(st.barcode_data, '-', ''), ' ', ''), ?) = ?
          ORDER BY st.scanned_at DESC, st.id DESC
          LIMIT 1`,
-        [storeId, book.lottery_id, startSql, endSql, prefixLength, prefix]
+        [effectiveStoreId, book.lottery_id, startSql, endSql, prefixLength, prefix]
       );
 
       const [scansCountRows] = await pool.query(
@@ -483,7 +484,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
       const firstTicketRaw = (firstRows as any[])[0]?.ticket_number;
 
       const previousTicket = await fetchTicketSnapshot(
-        storeId,
+        effectiveStoreId,
         book.lottery_id,
         prefix,
         prefixLength,
@@ -531,7 +532,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
                total_sales = VALUES(total_sales),
                updated_at = CURRENT_TIMESTAMP`,
             [
-              storeId,
+              effectiveStoreId,
               book.lottery_id,
               book.book_id,
               closingScanId,
@@ -572,7 +573,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
     );
 
     res.status(200).json({
-      store_id: storeId,
+      store_id: effectiveStoreId,
       range: reportRange.label,
       start: startSql,
       end: endSql,
@@ -592,7 +593,7 @@ export const getDailySalesReport = async (req: AuthRequest, res: Response): Prom
 
 export const getTicketScanLogs = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const storeId = parseInt(req.params.storeId);
+    const requestedStoreId = parseInt(req.params.storeId);
     const dateFilter = req.query.date as string | undefined;
     const limit = Math.min(
       Math.max(parseInt((req.query.limit as string) || '100', 10) || 100, 1),
@@ -604,7 +605,8 @@ export const getTicketScanLogs = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    await authorizeStoreAccess(storeId, req.user);
+    const storeRecord = await authorizeStoreAccess(requestedStoreId, req.user);
+    const storeId = storeRecord.store_id;
 
     let query = `
       SELECT
@@ -643,7 +645,7 @@ export const getTicketScanLogs = async (req: AuthRequest, res: Response): Promis
 
 export const getMonthlySalesReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const storeId = parseInt(req.params.storeId);
+    const requestedStoreId = parseInt(req.params.storeId);
     const monthParam =
       (req.query.month as string) || new Date().toISOString().slice(0, 7);
 
@@ -652,7 +654,8 @@ export const getMonthlySalesReport = async (req: AuthRequest, res: Response): Pr
       return;
     }
 
-    await authorizeStoreAccess(storeId, req.user);
+    const storeRecord = await authorizeStoreAccess(requestedStoreId, req.user);
+    const storeId = storeRecord.store_id;
 
     const monthStart = `${monthParam}-01`;
 

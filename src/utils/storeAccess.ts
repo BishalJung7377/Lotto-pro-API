@@ -41,15 +41,22 @@ export const authorizeStoreAccess = async (
   }
 
   if (user.role === 'store_account') {
-    if (user.id !== storeId) {
-      throw new StoreAccessError(403, 'Cannot access another store');
+    const assignedStoreId = user.id;
+    if (!assignedStoreId) {
+      throw new StoreAccessError(403, 'Store account not linked to a store');
+    }
+
+    if (storeId && storeId !== assignedStoreId) {
+      console.warn(
+        `Store account ${assignedStoreId} attempted to access store ${storeId}. Using assigned store instead.`
+      );
     }
 
     const [rows] = await pool.query(
       `SELECT store_id, owner_id, store_name, state
        FROM STORES
        WHERE store_id = ?`,
-      [storeId]
+      [assignedStoreId]
     );
 
     if ((rows as any[]).length === 0) {

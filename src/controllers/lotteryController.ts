@@ -30,13 +30,13 @@ const LOTTERY_REMAINING_SQL = `
 
 export const getLotteryTypes = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const storeId = Number(req.params.storeId);
-    if (isNaN(storeId)) {
+    const requestedStoreId = Number(req.params.storeId);
+    if (isNaN(requestedStoreId)) {
       res.status(400).json({ error: 'storeId must be a number' });
       return;
     }
 
-    const store = await authorizeStoreAccess(storeId, req.user);
+    const store = await authorizeStoreAccess(requestedStoreId, req.user);
     const storeState = store.state;
 
     const [result] = storeState
@@ -61,9 +61,9 @@ export const getLotteryTypes = async (req: AuthRequest, res: Response): Promise<
 
 export const getStoreInventory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const storeId = parseInt(req.params.storeId);
-
-    await authorizeStoreAccess(storeId, req.user);
+    const requestedStoreId = parseInt(req.params.storeId);
+    const storeRecord = await authorizeStoreAccess(requestedStoreId, req.user);
+    const storeId = storeRecord.store_id;
 
     // Get inventory with lottery type details
     const [result] = await pool.query(
@@ -98,10 +98,11 @@ export const getStoreInventory = async (req: AuthRequest, res: Response): Promis
 
 export const getLotteryDetail = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const storeId = parseInt(req.params.storeId);
+    const requestedStoreId = parseInt(req.params.storeId);
     const lotteryTypeId = parseInt(req.params.lotteryTypeId);
 
-    await authorizeStoreAccess(storeId, req.user);
+    const storeRecord = await authorizeStoreAccess(requestedStoreId, req.user);
+    const storeId = storeRecord.store_id;
 
     // Get inventory details
     const [inventoryResult] = await pool.query(
@@ -160,11 +161,12 @@ export const getLotteryDetail = async (req: AuthRequest, res: Response): Promise
 
 export const updateInventory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const storeId = parseInt(req.params.storeId);
+    const requestedStoreId = parseInt(req.params.storeId);
     const lotteryTypeId = parseInt(req.params.lotteryTypeId);
     const { total_count, current_count } = req.body;
 
-    await authorizeStoreAccess(storeId, req.user);
+    const storeRecord = await authorizeStoreAccess(requestedStoreId, req.user);
+    const storeId = storeRecord.store_id;
 
     if (req.user?.role !== 'store_owner') {
       res.status(403).json({ error: 'Only store owners can update inventory' });
