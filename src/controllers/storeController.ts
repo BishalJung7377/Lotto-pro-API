@@ -4,6 +4,7 @@ import { AuthRequest } from '../middleware/auth';
 import { CreateStoreRequest } from '../models/types';
 import { authorizeStoreAccess, StoreAccessError } from '../utils/storeAccess';
 import { hashPassword } from '../utils/auth';
+import { hashLotteryAccountNumber } from '../utils/lotteryAccount';
 import {
   DEFAULT_NOTIFICATION_SETTINGS,
   NOTIFICATION_SETTING_KEYS,
@@ -142,9 +143,11 @@ export const createStore = async (
       return;
     }
 
+    const hashedLotteryAccount = hashLotteryAccountNumber(lottery_ac_no);
+
     const [existing] = await pool.query(
       'SELECT store_id FROM STORES WHERE lottery_ac_no = ?',
-      [lottery_ac_no]
+      [hashedLotteryAccount]
     );
 
     if ((existing as any[]).length > 0) {
@@ -167,7 +170,7 @@ export const createStore = async (
         zipcode || null,
         is_24_hours ? 1 : 0,
         closing_time || null,
-        lottery_ac_no,
+        hashedLotteryAccount,
         hashedLotteryPassword,
       ]
     );
@@ -194,7 +197,6 @@ export const createStore = async (
         city,
         state,
         zipcode,
-        lottery_ac_no,
         is_24_hours,
         closing_time,
         created_at
@@ -202,6 +204,9 @@ export const createStore = async (
       [storeId]
     );
     const store = (stores as any[])[0];
+    if (store) {
+      store.lottery_ac_no = lottery_ac_no;
+    }
 
     res.status(201).json({
       store,
@@ -240,29 +245,9 @@ export const updateStore = async (
       return;
     }
 
-    if (lottery_ac_no) {
-      if (!isValidLotteryAccountNumber(lottery_ac_no)) {
-        res
-          .status(400)
-          .json({ error: 'Lottery account number must be 8 digits' });
-        return;
-      }
-
-      const [existing] = await pool.query(
-        'SELECT store_id FROM STORES WHERE lottery_ac_no = ? AND store_id != ?',
-        [lottery_ac_no, storeId]
-      );
-
-      if ((existing as any[]).length > 0) {
-        res
-          .status(400)
-          .json({ error: 'Lottery account number already in use' });
-        return;
-      }
-    }
-
     const updates: string[] = [];
     const values: any[] = [];
+    let updatedLotteryAccount: string | undefined;
 
     if (store_name) {
       updates.push('store_name = ?');
@@ -285,8 +270,30 @@ export const updateStore = async (
       values.push(zipcode);
     }
     if (lottery_ac_no) {
+      if (!isValidLotteryAccountNumber(lottery_ac_no)) {
+        res
+          .status(400)
+          .json({ error: 'Lottery account number must be 8 digits' });
+        return;
+      }
+
+      const hashedLotteryAccount = hashLotteryAccountNumber(lottery_ac_no);
+
+      const [existing] = await pool.query(
+        'SELECT store_id FROM STORES WHERE lottery_ac_no = ? AND store_id != ?',
+        [hashedLotteryAccount, storeId]
+      );
+
+      if ((existing as any[]).length > 0) {
+        res
+          .status(400)
+          .json({ error: 'Lottery account number already in use' });
+        return;
+      }
+
       updates.push('lottery_ac_no = ?');
-      values.push(lottery_ac_no);
+      values.push(hashedLotteryAccount);
+      updatedLotteryAccount = lottery_ac_no;
     }
     if (lottery_pw) {
       if (!isValidLotteryPin(lottery_pw)) {
@@ -329,8 +336,13 @@ export const updateStore = async (
       [storeId]
     );
 
+    const store = (result as any[])[0];
+    if (store && updatedLotteryAccount) {
+      store.lottery_ac_no = updatedLotteryAccount;
+    }
+
     res.status(200).json({
-      store: (result as any[])[0],
+      store,
       message: 'Store updated successfully',
     });
   } catch (error) {

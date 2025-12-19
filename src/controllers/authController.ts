@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import type { PoolConnection } from 'mysql2/promise';
 import { pool } from '../config/database';
 import { hashPassword, comparePassword, generateToken } from '../utils/auth';
+import { hashLotteryAccountNumber } from '../utils/lotteryAccount';
 import { LoginRequest, RegisterRequest, StoreLoginRequest, SuperAdmin } from '../models/types';
 import { AuthRequest } from '../middleware/auth';
 
