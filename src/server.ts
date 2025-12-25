@@ -203,8 +203,8 @@ const startServer = async () => {
       console.log('  GET    /api/notifications');
       console.log('  PATCH  /api/notifications/:notificationId/read');
       console.log('  POST   /api/notifications/mark-all-read');
-      console.log('  GET    /api/settings/store/:storeId/notifications');
-      console.log('  PUT    /api/settings/store/:storeId/notifications');
+      console.log('  GET    /api/settings/notifications');
+      console.log('  PUT    /api/settings/notifications');
       console.log('  GET    /api/reports/store/:storeId');
       console.log('  GET    /api/reports/store/:storeId/lottery/:lotteryTypeId');
       console.log('  GET    /api/reports/store/:storeId/analytics');

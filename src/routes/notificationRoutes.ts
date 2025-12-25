@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
-import { storeAccessAuthMiddleware, authMiddleware } from '../middleware/auth';
+import { authMiddleware } from '../middleware/auth';
 import {
   getNotificationSettings,
   updateNotificationSettings,
@@ -8,16 +8,7 @@ import {
 
 const router = Router();
 
-router.get(
-  '/store/:storeId/notifications',
-  storeAccessAuthMiddleware,
-  asyncHandler(getNotificationSettings)
-);
-
-router.put(
-  '/store/:storeId/notifications',
-  authMiddleware,
-  asyncHandler(updateNotificationSettings)
-);
+router.get('/notifications', authMiddleware, asyncHandler(getNotificationSettings));
+router.put('/notifications', authMiddleware, asyncHandler(updateNotificationSettings));
 
 export default router;

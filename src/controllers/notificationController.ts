@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { pool } from '../config/database';
 import { AuthRequest } from '../middleware/auth';
-import { authorizeStoreAccess, StoreAccessError } from '../utils/storeAccess';
+import { StoreAccessError } from '../utils/storeAccess';
 import { NOTIFICATION_SETTING_KEYS, NotificationSettingKey } from '../constants/notificationSettings';
 import { ensureOwnerSettings } from '../services/notificationService';
 
@@ -9,24 +9,18 @@ const SETTINGS_TABLE = 'STORE_NOTIFICATION_SETTINGS';
 
 export const getNotificationSettings = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const storeId = parseInt(req.params.storeId, 10);
-    if (isNaN(storeId)) {
-      res.status(400).json({ error: 'storeId must be a number' });
+    if (!req.user || req.user.role !== 'store_owner') {
+      res.status(403).json({ error: 'Store owner access required' });
       return;
     }
 
-    const storeRecord = await authorizeStoreAccess(storeId, req.user);
-    const settings = await ensureOwnerSettings(storeRecord.owner_id);
+    const settings = await ensureOwnerSettings(req.user.id);
 
     res.status(200).json({
-      owner_id: storeRecord.owner_id,
+      owner_id: req.user.id,
       settings,
     });
   } catch (error) {
-    if (error instanceof StoreAccessError) {
-      res.status(error.status).json({ error: error.message });
-      return;
-    }
     console.error('Get notification settings error:', error);
     res.status(500).json({ error: 'Server error fetching notification settings' });
   }
@@ -36,18 +30,6 @@ export const updateNotificationSettings = async (req: AuthRequest, res: Response
   try {
     if (!req.user || req.user.role !== 'store_owner') {
       res.status(403).json({ error: 'Only store owners can update settings' });
-      return;
-    }
-
-    const storeId = parseInt(req.params.storeId, 10);
-    if (isNaN(storeId)) {
-      res.status(400).json({ error: 'storeId must be a number' });
-      return;
-    }
-
-    const storeRecord = await authorizeStoreAccess(storeId, req.user);
-    if (storeRecord.owner_id !== req.user.id) {
-      res.status(403).json({ error: 'Not authorized to update this store' });
       return;
     }
 
@@ -77,21 +59,17 @@ export const updateNotificationSettings = async (req: AuthRequest, res: Response
       `UPDATE ${SETTINGS_TABLE}
        SET ${setClause}, updated_at = CURRENT_TIMESTAMP
        WHERE owner_id = ?`,
-      [...values, storeRecord.owner_id]
+      [...values, req.user.id]
     );
 
-    const updatedSettings = await ensureOwnerSettings(storeRecord.owner_id);
+    const updatedSettings = await ensureOwnerSettings(req.user.id);
 
     res.status(200).json({
-      owner_id: storeRecord.owner_id,
+      owner_id: req.user.id,
       settings: updatedSettings,
       message: 'Notification settings updated successfully',
     });
   } catch (error) {
-    if (error instanceof StoreAccessError) {
-      res.status(error.status).json({ error: error.message });
-      return;
-    }
     console.error('Update notification settings error:', error);
     res.status(500).json({ error: 'Server error updating notification settings' });
   }
