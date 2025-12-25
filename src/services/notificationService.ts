@@ -144,18 +144,39 @@ export const fetchOwnerNotifications = async (
     [ownerId, limit]
   );
 
-  return (rows as any[]).map((row) => ({
-    id: row.id,
-    owner_id: row.owner_id,
-    store_id: row.store_id,
-    notification_type: row.notification_type,
-    title: row.title,
-    message: row.message,
-    metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-    is_read: Boolean(row.is_read),
-    created_at: row.created_at,
-    store_name: row.store_name,
-  }));
+  return (rows as any[]).map((row) => {
+    let metadata: Record<string, any> | undefined;
+    if (row.metadata !== null && row.metadata !== undefined) {
+      const raw =
+        typeof row.metadata === 'string'
+          ? row.metadata
+          : Buffer.isBuffer(row.metadata)
+            ? row.metadata.toString('utf8')
+            : null;
+      if (raw) {
+        try {
+          metadata = JSON.parse(raw);
+        } catch {
+          metadata = undefined;
+        }
+      } else if (typeof row.metadata === 'object') {
+        metadata = row.metadata;
+      }
+    }
+
+    return {
+      id: row.id,
+      owner_id: row.owner_id,
+      store_id: row.store_id,
+      notification_type: row.notification_type,
+      title: row.title,
+      message: row.message,
+      metadata,
+      is_read: Boolean(row.is_read),
+      created_at: row.created_at,
+      store_name: row.store_name,
+    };
+  });
 };
 
 export const markNotificationRead = async (
